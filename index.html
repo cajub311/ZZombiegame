@@ -515,7 +515,7 @@
     hunterAnnounced: false,
     flashColor: null,
     flashAlpha: 0,
-    mods: { fangs:0, packspeed:0, swift:0, hide:0, apex:0, runners:0, vigor:0, trail:0, detonator:0, lifesteal:0, spore:0 },
+    mods: { fangs:0, packspeed:0, swift:0, hide:0, apex:0, runners:0, vigor:0, trail:0, detonator:0, lifesteal:0, spore:0, smart:0, siege:0, leapers:0 },
     evos: {},
     boss: null, isBoss: false, bossSpawned: false, bossReward: false, waveTimer: 0,
     rivalTimer: 0, rivalsAnnounced: false, hitStop: 0, infFrac: 0,
@@ -569,6 +569,9 @@
     { id:"detonator",name:"Detonator",      icon:"💥", desc:"Zombies shot dead burst into a cloud." },
     { id:"lifesteal",name:"Vampiric Bite",  icon:"🩸", desc:"Infecting humans heals you.", repeat:true },
     { id:"spore",    name:"Spore Burst",    icon:"💨", desc:"Your bite releases an infection cloud.", repeat:true },
+    { id:"smart",    name:"Pack Mind",       icon:"🧠", desc:"Your horde reads your target and stays coordinated.", repeat:true },
+    { id:"siege",    name:"Siege Claws",     icon:"🏚️", desc:"Zombies tear through occupied buildings faster.", repeat:true },
+    { id:"leapers",  name:"Jumper Strain",   icon:"🦵", desc:"Some infected leap into prey and shelter doors.", repeat:true },
   ];
   function applyPower(id) {
     const slot = ABILITY_OF[id];
@@ -595,7 +598,10 @@
       trail:"Combo: pair with Pandemic Burst for Contamination.",
       pandemic:"Combo: pair with Toxic Trail for Contamination.",
       apex:"Combo: stack with Vampiric Bite for Alpha Bite.",
-      lifesteal:"Combo: pair with Apex Lunge for Alpha Bite."
+      lifesteal:"Combo: pair with Apex Lunge for Alpha Bite.",
+      smart:"Horde AI: better target sharing and shelter pressure.",
+      siege:"Building breaker: stronger swarms against shelters.",
+      leapers:"New strain: jumpers close gaps and hit buildings."
     };
     return hints[p.id] || "";
   }
@@ -659,7 +665,7 @@
       const biteR = 34 * reach;
       const bx = player.x + Math.cos(ang)*18, by = player.y + Math.sin(ang)*18;
       for (const h of humans) if (h.state === "human" && dist2(bx,by,h.x,h.y) < biteR*biteR) startTurn(h);
-      for (const b of blocks) if (!b.breached && b.occupants.length && dist2(bx,by,b.cx,b.cy) < (biteR+b.r)*(biteR+b.r)) damageShelter(b, 1.4, true);
+      for (const b of blocks) if (!b.breached && b.occupants.length && dist2(bx,by,b.cx,b.cy) < (biteR+b.r)*(biteR+b.r)) damageShelter(b, 1.4 + state.mods.siege * 0.55, true);
       for (const so of soldiers) if (dist2(bx,by,so.x,so.y) < (biteR+so.r)*(biteR+so.r)) { so.infect = (so.infect||0) + 0.5; blood(so.x,so.y); }
       if (state.boss && dist2(bx,by,state.boss.x,state.boss.y) < (biteR+state.boss.r)*(biteR+state.boss.r)) { state.boss.hp -= 6; blood(state.boss.x,state.boss.y); }
       for (const rv of rivals) if (dist2(bx,by,rv.x,rv.y) < (biteR+rv.r)*(biteR+rv.r)) { rv.hp -= 3; blood(rv.x,rv.y); }
@@ -743,7 +749,7 @@
     state.dna = 0; state.totalInfected = 0; state.turnedSoldiers = 0;
     state.hordeMs = 0; state.combo = 0; state.comboT = 0; state.peakHorde = 1;
     state.rivalsAnnounced = false;
-    state.mods = { fangs:0, packspeed:0, swift:0, hide:0, apex:0, runners:0, vigor:0, trail:0, detonator:0, lifesteal:0, spore:0 };
+    state.mods = { fangs:0, packspeed:0, swift:0, hide:0, apex:0, runners:0, vigor:0, trail:0, detonator:0, lifesteal:0, spore:0, smart:0, siege:0, leapers:0 };
     state.evos = {};
     state.biteN = 0; state.trailT = 0;
     ABILITIES.forEach((a, i) => { a.unlocked = (i === 0); a.cd = 0; });
@@ -1008,10 +1014,12 @@
   // only ones fast enough to catch fleeing civilians), brutes are slow tanks.
   function assignStrain(h) {
     const runBias = state.mods.runners * 0.10;
+    const leapBias = state.mods.leapers * 0.055;
     const roll = Math.random();
     if (roll < 0.06)               { h.ztype = "brute";    h.r = 16; h.speed = 70;  h.zhp = 4; }
     else if (roll < 0.12)          { h.ztype = "bloater";  h.r = 13; h.speed = 80;  h.zhp = 1; }
-    else if (roll < 0.34 + runBias){ h.ztype = "runner";   h.r = 8;  h.speed = state.evos.feralPack ? 205 : 178; h.zhp = 1; }
+    else if (roll < 0.12 + leapBias){ h.ztype = "leaper";  h.r = 8;  h.speed = 168; h.zhp = 1; h.leapCd = rand(0.5, 1.4); h.leapT = 0; }
+    else if (roll < 0.34 + runBias + leapBias){ h.ztype = "runner";   h.r = 8;  h.speed = state.evos.feralPack ? 205 : 178; h.zhp = 1; }
     else if (roll < 0.70)          { h.ztype = "walker";   h.r = 10; h.speed = 132; h.zhp = 1; }
     else                           { h.ztype = "shambler"; h.r = 11; h.speed = 92;  h.zhp = 1; }
   }
@@ -1103,7 +1111,7 @@
     if (!b || b.breached) return;
     b.pulse = 0;
     if (loud) b.hp -= amount * 4;
-    else b.pressure += amount;
+    else b.pressure += amount * (1 + state.mods.siege * 0.45);
     if (Math.random() < 0.25 || loud) {
       particles.push({ x:b.cx+rand(-b.w*0.35,b.w*0.35), y:b.cy+rand(-b.h*0.35,b.h*0.35), vx:rand(-20,20), vy:rand(-20,20), life:0.35, max:0.35, r:rand(2,4), color:"#b6e6b0" });
     }
@@ -1386,18 +1394,27 @@
           const d = dist2(h.x,h.y,t.x,t.y);
           if (d < bd) { bd = d; best = t; }
         }
-        const shelterTarget = nearestOccupiedShelter(h.x, h.y, best ? 420 : 900);
+        const command = state.mods.smart ? nearestPrey() : null;
+        const shelterTarget = nearestOccupiedShelter(h.x, h.y, best ? 420 + state.mods.smart*90 : 900 + state.mods.smart*120);
         // Chase a nearby victim; otherwise surge toward Patient Zero so the
         // horde reads as one growing swarm around you instead of scattering.
         let tx, ty;
-        const FOLLOW = 520;
-        if (shelterTarget && (!best || dist2(h.x,h.y,shelterTarget.cx,shelterTarget.cy) < bd * 1.35)) { tx = shelterTarget.cx; ty = shelterTarget.cy; }
+        const FOLLOW = 520 + state.mods.smart * 90;
+        if (command && command.shelter && dist2(h.x,h.y,command.x,command.y) < (760 + state.mods.smart*140)*(760 + state.mods.smart*140)) { tx = command.x; ty = command.y; }
+        else if (command && command.state === "human" && dist2(h.x,h.y,command.x,command.y) < (650 + state.mods.smart*120)*(650 + state.mods.smart*120)) { tx = command.x; ty = command.y; }
+        else if (shelterTarget && (!best || dist2(h.x,h.y,shelterTarget.cx,shelterTarget.cy) < bd * (1.35 + state.mods.smart*0.22))) { tx = shelterTarget.cx; ty = shelterTarget.cy; }
         else if (best && bd < FOLLOW*FOLLOW) { tx = best.x; ty = best.y; }
         else { tx = player.x; ty = player.y; }
         const dx = tx - h.x, dy = ty - h.y, dl = Math.hypot(dx,dy) || 1;
         const packBonus = state.mods.packspeed * 0.12 + (state.evos.feralPack ? 0.10 : 0);
         const base = (h.speed || 110) * (1 + packBonus);
-        const zs = frenzy ? base * 1.5 : base;
+        if (h.ztype === "leaper") {
+          h.leapCd = (h.leapCd || 0) - dt;
+          if ((dl > 80 && dl < 260) && h.leapCd <= 0) { h.leapT = 0.22; h.leapCd = rand(1.8, 3.2); burst(h.x, h.y, "#d6ff5b"); }
+          if (h.leapT > 0) h.leapT -= dt;
+        }
+        const leapMul = h.leapT > 0 ? 2.35 : 1;
+        const zs = (frenzy ? base * 1.5 : base) * leapMul;
         h.vx = (dx/dl) * zs; h.vy = (dy/dl) * zs;
         h.x = clamp(h.x + h.vx*dt, 10, WORLD.w-10);
         h.y = clamp(h.y + h.vy*dt, 10, WORLD.h-10);
@@ -1405,7 +1422,8 @@
         // infect on contact
         if (best && bd < (h.r + best.r + 1)*(h.r + best.r + 1)) startTurn(best);
         if (shelterTarget && dist2(h.x,h.y,shelterTarget.cx,shelterTarget.cy) < (h.r+shelterTarget.r)*(h.r+shelterTarget.r)) {
-          damageShelter(shelterTarget, dt * (h.ztype === "brute" ? 1.6 : 0.75), false);
+          const hit = h.ztype === "brute" ? 1.6 : (h.ztype === "leaper" ? 1.15 : 0.75);
+          damageShelter(shelterTarget, dt * hit, false);
         }
       }
     }
@@ -2035,12 +2053,13 @@
     } else { // zombie — color/shape per strain
       const C = {
         runner:   { b:"#4ea33a", h:"#9dff7a" },
+        leaper:   { b:"#6aa33a", h:"#d6ff5b" },
         walker:   { b:"#3c7a30", h:"#6dff5b" },
         shambler: { b:"#2e5826", h:"#4fae3a" },
         brute:    { b:"#264a1c", h:"#5a8f3a" },
         bloater:  { b:"#6e7a2a", h:"#c2d24a" },
       }[h.ztype || "walker"];
-      const wob = Math.sin(h.anim) * (h.ztype === "runner" ? 3 : 2);
+      const wob = Math.sin(h.anim) * (h.ztype === "runner" || h.ztype === "leaper" ? 3 : 2);
       ctx.shadowColor = "rgba(109,255,91,0.5)"; ctx.shadowBlur = 8;
       if (h.ztype === "brute") { ctx.strokeStyle = "#162e0f"; ctx.lineWidth = 3; }
       ctx.fillStyle = C.b;
