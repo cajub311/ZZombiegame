@@ -39,11 +39,27 @@ Controls on phone: **left half of the screen = move, right half = aim & bite.**
 - **Bosses every 5th level.** A hulking **Behemoth** with a telegraphed shockwave stomp and cannon fire, getting stronger each tier. Boss levels have only a few civilians to rebuild your horde from — you'll need your skills to bring it down.
 - **The public stays calm** until ~10% of the city is infected, giving you room to build a starter horde before panic spreads.
 
+## 🆕 Shareable Strain Codes (New)
+
+After any run the end screen now shows a **YOUR STRAIN CODE** (compact base64 encoding of your mutations/powers + key stats).
+
+- Click **COPY** to grab it.
+- Load the exact same build on any play by appending `?strain=THECODE` (or `#THECODE`) to the URL before starting.
+- The game auto-applies the powers using the existing mutation system (non-breaking, reuses your POWERUPS/ABILITIES/applyPower logic).
+
+Perfect for sharing killer builds with friends, competing on identical strains, saving favorites, or experimenting. Inspired by Plague Inc gene codes and roguelite share culture.
+
 ## 🛠️ Tech
 
 A single `index.html`: vanilla JavaScript + Canvas 2D for rendering and the Web Audio API for all sound. No libraries.
 
 Built and balanced with the help of an automated playtest bot that ran several hundred simulated games to tune the difficulty curve.
+
+---
+
+**Recent improvements** draw from deep analysis of Plague Inc (evolution trees, Patient Zero origin, cure pressure, DNA economy, asymmetry across pathogen types, 700M+ plays from tension + replay via genes/scenarios/dailies), infection tag & multiplayer Patient Zero experiences (asymmetric lobbies, proximity spread, social deduction, containment vs outbreak), and horde/survivor design (Vampire Survivors-style drafting/autonomy/juice + meta progression). See the session plan for the full categorized roadmap (gameplay, multiplayer, content, UX, tech, retention).
+
+Prioritized next slices (per approved plan): mutation synergies, heat/lie-low expansions, more strains or city variety, meta/dailies, or multiplayer stubs. Tell the agent what to tackle next!
 
 ---
 
