@@ -1,5 +1,5 @@
 // Patient Zero service worker — offline caching for the installed app.
-const CACHE = "pz-v5";
+const CACHE = "pz-v6";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {

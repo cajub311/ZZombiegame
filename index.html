@@ -198,6 +198,28 @@
   }
   #toast.show { opacity: 1; transform: translateX(-50%) translateY(-6px); }
 
+  #objective {
+    position: fixed;
+    top: 124px; left: 50%;
+    transform: translateX(-50%);
+    z-index: 11;
+    min-width: min(420px, calc(100vw - 28px));
+    max-width: calc(100vw - 28px);
+    padding: 8px 12px;
+    background: rgba(5, 12, 7, 0.76);
+    border: 1px solid rgba(109,255,91,0.22);
+    border-radius: 10px;
+    color: #cdeec9;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    text-align: center;
+    pointer-events: none;
+    text-transform: uppercase;
+    backdrop-filter: blur(3px);
+  }
+  #objective.hidden { display: none; }
+
   .credit { position: fixed; bottom: 8px; right: 12px; font-size: 11px; color: #4f7a4b; z-index: 9; }
 
   /* ---------- Draft / power-up picks ---------- */
@@ -275,6 +297,7 @@
 
 <div id="abilities" class="hidden"></div>
 <div id="toast"></div>
+<div id="objective" class="hidden"></div>
 
 <!-- Start screen -->
 <div id="startScreen" class="overlay">
@@ -493,8 +516,10 @@
     flashColor: null,
     flashAlpha: 0,
     mods: { fangs:0, packspeed:0, swift:0, hide:0, apex:0, runners:0, vigor:0, trail:0, detonator:0, lifesteal:0, spore:0 },
+    evos: {},
     boss: null, isBoss: false, bossSpawned: false, bossReward: false, waveTimer: 0,
     rivalTimer: 0, rivalsAnnounced: false, hitStop: 0, infFrac: 0,
+    districtCaptures: 0, escaped: 0, objectiveText: "", objectiveStep: 0,
   };
 
   const cam = { x: 0, y: 0 };
@@ -510,6 +535,7 @@
   let strikes = [];   // martial-law airstrikes {x,y,t,r,done}
   let rivals = [];    // Night Stalkers — a rival strain {x,y,r,hp,anim}
   let decals = [];    // persistent gore on the ground {x,y,r,a,c}
+  let districts = []; // named city zones that alter flow and grant capture rewards
   let player = null;
 
   // ============================================================ ABILITIES
@@ -548,6 +574,7 @@
     if (slot != null) { ABILITIES[slot].unlocked = true; }
     else if (id === "vigor") { state.maxHp += 40; state.mods.vigor++; player.hp = state.maxHp; }
     else if (state.mods[id] != null) { state.mods[id]++; }
+    checkEvolutions();
   }
   function isOwned(p) {
     const i = ABILITY_OF[p.id];
@@ -556,6 +583,38 @@
     return false;
   }
   function stackCount(p) { return p.repeat ? (state.mods[p.id] || 0) : (isOwned(p) ? 1 : 0); }
+  function synergyHint(p) {
+    const hints = {
+      runners:"Combo: pair with Pack Hunger for Feral Pack.",
+      packspeed:"Combo: pair with Rabid Strain for Feral Pack.",
+      detonator:"Combo: pair with Spore Burst for Plague Bomb.",
+      spore:"Combo: pair with Detonator for Plague Bomb.",
+      hide:"Combo: pair with Viral Vigor for Juggernaut.",
+      vigor:"Combo: pair with Thick Hide for Juggernaut.",
+      trail:"Combo: pair with Pandemic Burst for Contamination.",
+      pandemic:"Combo: pair with Toxic Trail for Contamination.",
+      apex:"Combo: stack with Vampiric Bite for Alpha Bite.",
+      lifesteal:"Combo: pair with Apex Lunge for Alpha Bite."
+    };
+    return hints[p.id] || "";
+  }
+
+  function unlockEvolution(id, name) {
+    if (state.evos[id]) return;
+    state.evos[id] = true;
+    if (id === "juggernaut") { state.maxHp += 35; player.hp = Math.min(state.maxHp, player.hp + 35); }
+    toast("EVOLUTION: " + name);
+    state.flashColor = "#6dff5b"; state.flashAlpha = 0.32;
+    state.shake = Math.max(state.shake, 8);
+    AudioFX.levelup();
+  }
+  function checkEvolutions() {
+    if (state.mods.runners >= 2 && state.mods.packspeed >= 2) unlockEvolution("feralPack", "FERAL PACK");
+    if (state.mods.detonator && state.mods.spore) unlockEvolution("plagueBomb", "PLAGUE BOMB");
+    if (state.mods.hide >= 1 && state.mods.vigor >= 1) unlockEvolution("juggernaut", "JUGGERNAUT STRAIN");
+    if (state.mods.trail && ABILITIES[2].unlocked) unlockEvolution("contamination", "CONTAMINATION ZONE");
+    if (state.mods.apex >= 2 && state.mods.lifesteal >= 1) unlockEvolution("alphaBite", "ALPHA BITE");
+  }
 
   let frenzyT = 0; // horde buff timer
 
@@ -589,7 +648,7 @@
 
     if (i === 0) { // BITE — lunge toward the cursor and chomp what's in front
       const ang = aimAngle();
-      const reach = 1 + state.mods.apex * 0.45 + Math.min(0.5, state.startCount / 600);
+      const reach = 1 + state.mods.apex * 0.45 + (state.evos.alphaBite ? 0.35 : 0) + Math.min(0.5, state.startCount / 600);
       player.lungeT = 0.16; player.lungeA = ang; player.lungeSpeed = 600 * reach;
       const biteR = 34 * reach;
       const bx = player.x + Math.cos(ang)*18, by = player.y + Math.sin(ang)*18;
@@ -599,7 +658,12 @@
       for (const rv of rivals) if (dist2(bx,by,rv.x,rv.y) < (biteR+rv.r)*(biteR+rv.r)) { rv.hp -= 3; blood(rv.x,rv.y); }
       if (state.mods.spore) { // Spore Burst: bite drops an infection cloud now and then
         state.biteN = (state.biteN||0) + 1;
-        if (state.biteN % Math.max(2, 4 - state.mods.spore) === 0) clouds.push({ x:bx, y:by, r:40 + state.mods.spore*8, life:0.8, max:0.8 });
+        if (state.biteN % Math.max(2, 4 - state.mods.spore) === 0) clouds.push({
+          x:bx, y:by,
+          r:40 + state.mods.spore*8 + (state.evos.plagueBomb ? 30 : 0),
+          life:0.8 + (state.evos.plagueBomb ? 0.35 : 0),
+          max:0.8 + (state.evos.plagueBomb ? 0.35 : 0)
+        });
       }
       burst(bx, by, "#9dff7a"); AudioFX.bite();
       a.cd = a.max;
@@ -616,11 +680,13 @@
       let n = 0;
       for (const h of humans) if (h.state === "human" && dist2(h.x,h.y,player.x,player.y) < R*R) { startTurn(h); n++; }
       ring(player.x, player.y, R, "#6dff5b");
+      if (state.evos.contamination) clouds.push({ x:player.x, y:player.y, r:R*0.7, life:1.35, max:1.35 });
       state.shake = 14; state.hitStop = 0.05; AudioFX.pandemic();
       toast(n > 0 ? `PANDEMIC! +${n} turning` : "PANDEMIC!");
       a.cd = a.max;
     } else if (i === 3) { // frenzy
       frenzyT = 6;
+      if (state.evos.feralPack) frenzyT = 8;
       ring(player.x, player.y, 120, "#ff7a3b"); AudioFX.frenzy();
       toast("FRENZY! Horde enraged");
       a.cd = a.max;
@@ -636,7 +702,7 @@
   // city block layout for visuals + soft collision feel
   let blocks = [];
   function buildCity() {
-    blocks = [];
+    blocks = []; districts = [];
     const grid = 5, margin = 90, cell = (WORLD.w - margin*2) / grid;
     for (let i = 0; i < grid; i++) {
       for (let j = 0; j < grid; j++) {
@@ -647,6 +713,17 @@
         blocks.push({ x: bx, y: by, w: Math.max(60,bw), h: Math.max(60,bh), shade: rand(0.04,0.12) });
       }
     }
+    addDistrict("mall", "MALL", "BIG CROWD", "#ffcb3b", 360, 360, 185);
+    addDistrict("hospital", "HOSPITAL", "SLOWS TURNING", "#5bd6ff", WORLD.w - 360, 360, 165);
+    addDistrict("station", "POLICE", "HEAT SOURCE", "#ff3b4e", 360, WORLD.h - 360, 170);
+    addDistrict("subway", "SUBWAY", "EVAC ROUTE", "#b96bff", WORLD.w - 360, WORLD.h - 360, 175);
+  }
+  function addDistrict(id, name, role, color, x, y, r) {
+    districts.push({ id, name, role, color, x:x + rand(-55,55), y:y + rand(-55,55), r, secured:false, warned:false, pulse:rand(0, TAU) });
+  }
+  function districtAt(x, y, id) {
+    for (const d of districts) if ((!id || d.id === id) && dist2(x,y,d.x,d.y) < d.r*d.r) return d;
+    return null;
   }
 
   // Fresh run: reset everything and build level 1.
@@ -657,6 +734,8 @@
     state.hordeMs = 0; state.combo = 0; state.comboT = 0; state.peakHorde = 1;
     state.rivalsAnnounced = false;
     state.mods = { fangs:0, packspeed:0, swift:0, hide:0, apex:0, runners:0, vigor:0, trail:0, detonator:0, lifesteal:0, spore:0 };
+    state.evos = {};
+    state.biteN = 0; state.trailT = 0;
     ABILITIES.forEach((a, i) => { a.unlocked = (i === 0); a.cd = 0; });
     player = {
       x: WORLD.w/2, y: WORLD.h/2, vx:0, vy:0, r: 13,
@@ -681,7 +760,12 @@
     state.population = N + 1;          // + player
     for (let i = 0; i < N; i++) {
       let x, y, tries = 0;
-      do { x = rand(60, WORLD.w-60); y = rand(60, WORLD.h-60); tries++; }
+      do {
+        const crowd = !boss && Math.random() < 0.38 ? districts[randInt(0, districts.length-1)] : null;
+        x = crowd ? clamp(crowd.x + rand(-crowd.r*0.55, crowd.r*0.55), 60, WORLD.w-60) : rand(60, WORLD.w-60);
+        y = crowd ? clamp(crowd.y + rand(-crowd.r*0.55, crowd.r*0.55), 60, WORLD.h-60) : rand(60, WORLD.h-60);
+        tries++;
+      }
       while (dist2(x,y,player.x,player.y) < 320*320 && tries < 8);
       humans.push(makeHuman(x, y));
     }
@@ -694,6 +778,8 @@
     state.startCount = 1; frenzyT = 0;
     state.lastLvl = null; state.hunterAnnounced = false; state.panicked = false;
     state.strikeTimer = 0; state.strikeWarned = false;
+    state.districtCaptures = 0; state.escaped = 0; state.objectiveStep = 0; state.objectiveText = "";
+    state.biteN = 0; state.trailT = 0;
     state.rivalTimer = 6;
     state.isBoss = boss;
     state.boss = null; state.bossSpawned = false; state.bossReward = false;
@@ -896,7 +982,7 @@
     const roll = Math.random();
     if (roll < 0.06)               { h.ztype = "brute";    h.r = 16; h.speed = 70;  h.zhp = 4; }
     else if (roll < 0.12)          { h.ztype = "bloater";  h.r = 13; h.speed = 80;  h.zhp = 1; }
-    else if (roll < 0.34 + runBias){ h.ztype = "runner";   h.r = 8;  h.speed = 178; h.zhp = 1; }
+    else if (roll < 0.34 + runBias){ h.ztype = "runner";   h.r = 8;  h.speed = state.evos.feralPack ? 205 : 178; h.zhp = 1; }
     else if (roll < 0.70)          { h.ztype = "walker";   h.r = 10; h.speed = 132; h.zhp = 1; }
     else                           { h.ztype = "shambler"; h.r = 11; h.speed = 92;  h.zhp = 1; }
   }
@@ -914,9 +1000,10 @@
 
   // Bloater bursts into a lingering infection cloud when destroyed.
   function spawnCloud(x, y) {
-    clouds.push({ x, y, r: 95, life: 1.5, max: 1.5 });
-    ring(x, y, 95, "#9dff7a");
-    for (const h of humans) if (h.state === "human" && dist2(h.x,h.y,x,y) < 95*95) startTurn(h);
+    const R = 95 + (state.evos.plagueBomb ? 35 : 0);
+    clouds.push({ x, y, r:R, life: 1.5, max: 1.5 });
+    ring(x, y, R, "#9dff7a");
+    for (const h of humans) if (h.state === "human" && dist2(h.x,h.y,x,y) < R*R) startTurn(h);
     state.shake = Math.max(state.shake, 5); AudioFX.bloat();
   }
   function becomeZombie(h) {
@@ -950,6 +1037,80 @@
     for (let i = 0; i < 16; i++) burst(so.x, so.y, "#6dff5b");
     state.shake = Math.max(state.shake, 6); AudioFX.convert();
     state.turnedSoldiers++;
+  }
+
+  // ============================================================ DISTRICTS / OBJECTIVES
+  function remainingHumans() {
+    let n = 0;
+    for (const h of humans) if (h.state === "human" || h.state === "turning") n++;
+    return n;
+  }
+  function nearestOpenDistrict(x, y, id) {
+    let best = null, bd = Infinity;
+    for (const d of districts) {
+      if (d.secured || (id && d.id !== id)) continue;
+      const dd = dist2(x,y,d.x,d.y);
+      if (dd < bd) { bd = dd; best = d; }
+    }
+    return best;
+  }
+  function updateDistricts(dt) {
+    for (const d of districts) {
+      d.pulse += dt;
+      if (d.secured) continue;
+      let total = 0, taken = 0;
+      for (const h of humans) {
+        if (h.evacuated || dist2(h.x,h.y,d.x,d.y) > d.r*d.r) continue;
+        if (h.state === "human" || h.state === "turning" || h.state === "zombie") {
+          total++;
+          if (h.state === "zombie" || h.state === "turning") taken++;
+        }
+      }
+      d.progress = total ? taken / total : 0;
+      if (d.progress >= 0.55 && taken >= 6) secureDistrict(d);
+      else if (!d.warned && state.panicked && d.id === "subway") {
+        d.warned = true;
+        toast("SUBWAY EVAC ROUTE OPEN — infect it or they escape");
+      }
+    }
+  }
+  function secureDistrict(d) {
+    d.secured = true;
+    state.districtCaptures++;
+    let msg = d.name + " OVERRUN";
+    if (d.id === "mall") {
+      msg += " — feeding frenzy";
+      frenzyT = Math.max(frenzyT, 5);
+      state.dna += 2;
+    } else if (d.id === "hospital") {
+      msg += " — decon offline";
+      state.dna += 3;
+    } else if (d.id === "station") {
+      msg += " — heat drops";
+      state.threat = Math.max(0, state.threat - 18);
+      state.dna += 2;
+    } else if (d.id === "subway") {
+      msg += " — escapes blocked";
+      state.dna += 3;
+    }
+    ring(d.x, d.y, d.r, "#6dff5b");
+    for (let i=0;i<18;i++) burst(d.x + rand(-d.r*0.35,d.r*0.35), d.y + rand(-d.r*0.35,d.r*0.35), "#6dff5b");
+    toast(msg);
+  }
+  function updateObjectives(zombieCount, remaining) {
+    const lines = [
+      { done:zombieCount >= 6, text:`BITE TO START A CHAIN (${Math.min(zombieCount,6)}/6)` },
+      { done:state.districtCaptures >= 1, text:"OVERRUN A NAMED DISTRICT" },
+      { done:ABILITIES.some((a, i) => i > 0 && a.unlocked), text:"CLEAR THE LEVEL AND PICK A MUTATION" },
+      { done:Object.keys(state.evos).length > 0, text:"COMBINE MUTATIONS TO EVOLVE YOUR STRAIN" },
+      { done:remaining <= Math.max(1, Math.floor((state.population - 1) * 0.18)), text:"FINISH THE CITY BEFORE EVACUATION" },
+    ];
+    const active = lines.find(x => !x.done);
+    const extra = state.escaped ? ` · ${state.escaped} ESCAPED` : "";
+    state.objectiveText = active ? active.text + extra : "SPREAD THE PANDEMIC" + extra;
+    const o = el("objective");
+    if (state.phase === "play") { o.textContent = state.objectiveText; o.classList.remove("hidden"); }
+    else o.classList.add("hidden");
   }
 
   // ============================================================ PARTICLES / FX
@@ -1021,7 +1182,7 @@
     // ---- count infected for AI/threat scaling
     let zombieCount = 1;
     for (const h of humans) if (h.state === "zombie") zombieCount++;
-    const infectFrac = zombieCount / state.population;
+    const infectFrac = clamp(zombieCount / state.population, 0, 1);
     state.infFrac = infectFrac;
 
     if (zombieCount > state.peakHorde) state.peakHorde = zombieCount;
@@ -1052,6 +1213,9 @@
       toast("📣 PANIC! The city scatters");
     }
 
+    updateDistricts(dt);
+    updateObjectives(zombieCount, remainingHumans());
+
     // ---- humans behaviour
     for (const h of humans) {
       if (h.state === "human") {
@@ -1068,10 +1232,20 @@
           if (z.state !== "zombie") continue;
           if (dist2(h.x,h.y,z.x,z.y) < SIGHT*SIGHT) { fx += h.x - z.x; fy += h.y - z.y; threatened = true; }
         }
+        const evacCap = Math.max(6, Math.floor(state.population * 0.12));
+        const evac = panic && infectFrac > 0.22 && state.escaped < evacCap && !threatened && nearestOpenDistrict(h.x, h.y, "subway");
         if (panic && threatened) {
           h.fleeT = 0.6;
           const fl = Math.hypot(fx,fy) || 1;
           h.vx = (fx/fl) * 122; h.vy = (fy/fl) * 122;  // walkers/runners can now catch fleers
+        } else if (evac) {
+          const ex = evac.x - h.x, ey = evac.y - h.y, el = Math.hypot(ex,ey) || 1;
+          h.vx = (ex/el) * 92; h.vy = (ey/el) * 92;
+          if (dist2(h.x,h.y,evac.x,evac.y) < 32*32) {
+            h.evacuated = true;
+            state.escaped++;
+            state.threat = clamp(state.threat + 1.2, 0, 100);
+          }
         } else {
           // wander
           h.wanderT -= dt;
@@ -1088,7 +1262,8 @@
         if (dist2(h.x,h.y,player.x,player.y) < cr*cr) startTurn(h);
       }
       else if (h.state === "turning") {
-        h.turn -= dt * (frenzy ? 2.2 : 1);
+        const hospital = nearestOpenDistrict(h.x, h.y, "hospital");
+        h.turn -= dt * (frenzy ? 2.2 : 1) * (hospital ? 0.62 : 1);
         h.anim += dt * 20;
         // twitch in place
         h.x += Math.sin(h.anim)*0.6;
@@ -1109,7 +1284,8 @@
         if (best && bd < FOLLOW*FOLLOW) { tx = best.x; ty = best.y; }
         else { tx = player.x; ty = player.y; }
         const dx = tx - h.x, dy = ty - h.y, dl = Math.hypot(dx,dy) || 1;
-        const base = (h.speed || 110) * (1 + state.mods.packspeed * 0.12);
+        const packBonus = state.mods.packspeed * 0.12 + (state.evos.feralPack ? 0.10 : 0);
+        const base = (h.speed || 110) * (1 + packBonus);
         const zs = frenzy ? base * 1.5 : base;
         h.vx = (dx/dl) * zs; h.vy = (dy/dl) * zs;
         h.x = clamp(h.x + h.vx*dt, 10, WORLD.w-10);
@@ -1124,9 +1300,10 @@
     state.soldierTimer -= dt;
     const threatN = state.threat / 100;
     const L = state.level;
+    const stationActive = districts.some(d => d.id === "station" && !d.secured && d.progress > 0.15);
     const maxSoldiers = Math.min(20, Math.floor(4 + L*1.2 + threatN * 8)); // capped; surge comes from waves
     const hurtRelief = player.hp < state.maxHp*0.35 ? 1.6 : 1; // brief lull when near death
-    const spawnEvery = Math.max(0.45, ((3.0 - L*0.15) - threatN * 2.2) * hurtRelief);
+    const spawnEvery = Math.max(0.45, ((3.0 - L*0.15) - threatN * 2.2 - (stationActive ? 0.45 : 0)) * hurtRelief);
     if (state.soldierTimer <= 0 && soldiers.length < maxSoldiers && state.threat > 5 && !state.boss) {
       state.soldierTimer = spawnEvery;
       // hunter-killers grow more common with level and heat — they come for YOU
@@ -1363,7 +1540,7 @@
     });
 
     // remove dead zombies
-    humans = humans.filter(h => !h.dead);
+    humans = humans.filter(h => !h.dead && !h.evacuated);
 
     // ---- pickups (DNA)
     for (const p of pickups) {
@@ -1448,6 +1625,32 @@
     ctx.strokeStyle = "rgba(109,255,91,0.18)";
     ctx.lineWidth = 4;
     ctx.strokeRect(2, 2, WORLD.w-4, WORLD.h-4);
+
+    // named districts: light objectives that make the city feel systemic
+    for (const d of districts) {
+      if (d.x < cam.x-d.r || d.x > cam.x+W+d.r || d.y < cam.y-d.r || d.y > cam.y+H+d.r) continue;
+      const beat = 0.08 * Math.sin(d.pulse * 3);
+      ctx.globalAlpha = d.secured ? 0.34 : 0.18 + beat;
+      ctx.fillStyle = d.secured ? "#6dff5b" : d.color;
+      ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, TAU); ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = d.secured ? "rgba(109,255,91,0.85)" : d.color;
+      ctx.lineWidth = d.secured ? 3 : 2;
+      ctx.setLineDash(d.secured ? [] : [7, 8]);
+      ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, TAU); ctx.stroke();
+      ctx.setLineDash([]);
+      const prog = clamp(d.progress || 0, 0, 1);
+      ctx.strokeStyle = "#6dff5b"; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.arc(d.x, d.y, d.r + 6, -Math.PI/2, -Math.PI/2 + TAU * prog); ctx.stroke();
+      ctx.fillStyle = "rgba(0,0,0,0.58)";
+      roundRect(d.x - 58, d.y - 16, 116, 32, 6); ctx.fill();
+      ctx.fillStyle = d.secured ? "#6dff5b" : "#e8ffe5";
+      ctx.font = "bold 12px sans-serif"; ctx.textAlign = "center";
+      ctx.fillText(d.name, d.x, d.y - 2);
+      ctx.fillStyle = d.secured ? "#b6e6b0" : d.color;
+      ctx.font = "bold 8px sans-serif";
+      ctx.fillText(d.secured ? "OVERRUN" : d.role, d.x, d.y + 10);
+    }
 
     // buildings (only those near view)
     for (const b of blocks) {
@@ -1616,6 +1819,13 @@
     ctx.fillRect(mmX, mmY, mmW, mmH);
     ctx.strokeStyle = "rgba(109,255,91,0.4)"; ctx.lineWidth = 1;
     ctx.strokeRect(mmX, mmY, mmW, mmH);
+    // districts
+    for (const d of districts) {
+      ctx.globalAlpha = d.secured ? 0.9 : 0.55;
+      ctx.strokeStyle = d.secured ? "#6dff5b" : d.color;
+      ctx.beginPath(); ctx.arc(mmX + d.x*sx, mmY + d.y*sy, Math.max(3, d.r*sx), 0, TAU); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
     // humans (faint), then zombies (green)
     ctx.fillStyle = "rgba(205,220,205,0.55)";
     for (const h of humans) if (h.state === "human") ctx.fillRect(mmX + h.x*sx - 0.5, mmY + h.y*sy - 0.5, 1.3, 1.3);
@@ -1900,6 +2110,7 @@
     el("draftScreen").classList.add("hidden");
     el("hud").classList.remove("hidden");
     el("abilities").classList.remove("hidden");
+    el("objective").classList.remove("hidden");
   }
 
   // Cleared a level -> offer a draft of mutations.
@@ -1923,8 +2134,10 @@
       const owned = stackCount(pu);
       const d = document.createElement("div");
       d.className = "draft-card";
+      const hint = synergyHint(pu);
       d.innerHTML = `<div class="pic">${pu.icon}</div><div class="nm">${pu.name}</div>` +
-        `<div class="ds">${pu.desc}</div>` + (owned ? `<div class="own">OWNED ×${owned}</div>` : "");
+        `<div class="ds">${pu.desc}${hint ? "<br><span style=\"color:#ffcb3b\">" + hint + "</span>" : ""}</div>` +
+        (owned ? `<div class="own">OWNED ×${owned}</div>` : "");
       d.addEventListener("click", () => pickPower(pu));
       wrap.appendChild(d);
     });
@@ -1937,6 +2150,7 @@
     state.phase = "draft";
     el("hud").classList.add("hidden");
     el("abilities").classList.add("hidden");
+    el("objective").classList.add("hidden");
     el("draftLvl").textContent = state.level;
     rollDraft();
     el("draftScreen").classList.remove("hidden");
@@ -1964,6 +2178,7 @@
     state.phase = "end";
     el("hud").classList.add("hidden");
     el("abilities").classList.add("hidden");
+    el("objective").classList.add("hidden");
     const best = loadBest();
     const record = state.level > (best.level||0) || state.totalInfected > (best.infected||0);
     saveBest({
