@@ -33,16 +33,17 @@ Controls on phone: **left half of the screen = move, right half = aim & bite.**
 ## 🦠 How it works
 
 - **Bite to infect.** Turned humans join your horde and autonomously hunt the rest of the city — you're steering a chain reaction, not racking up kills.
-- **Clear a level, then EVOLVE.** Each cleared city lets you draft one of three **mutations** (unlock new powers or stack passives like Sharper Fangs, Pack Hunger, Thick Hide, Viral Vigor). Every level the city grows and the military hits harder — it's endless.
+- **Clear a level, then EVOLVE.** Early cities now advance on outbreak momentum: build a horde, draft a mutation, and learn the systems quickly. From level 6 onward the city demands bigger takeovers, building conquest, and sharper play.
+- **Permanent stat upgrades.** Each cleared level gives one upgrade point for Speed, Health, Strength, or Horde Control, shown as bars on the evolution screen beside the mutation draft.
 - **Named city districts.** Malls, hospitals, Civic Hall, police stations, and subway hubs now create local objectives: overrun them for bonuses, shut down decon pressure, drop heat, or stop civilians from escaping.
 - **Five breakable shelters.** The mall, hospital, Civic Hall, police station, and subway are the only buildings. Their inner circles are blocked to the horde until breached, while panicked civilians can enter and smarter humans barricade them stronger over time.
 - **Solid city blocks.** Patient Zero and the horde have to move around buildings; only civilians can duck inside shelters.
-- **Responder guards.** Once shelters fill up, soldiers deploy around them and try to hold the horde off long enough for civilians to survive or escape.
+- **Responder guards.** Once the later cities heat up, soldiers deploy around shelters and try to hold the horde off long enough for civilians to survive or escape.
 - **Mutation evolutions.** Certain draft combinations become named strain upgrades like **Feral Pack**, **Plague Bomb**, **Juggernaut Strain**, **Contamination Zone**, and **Alpha Bite**.
 - **Smarter horde upgrades.** Draft powers like **Pack Mind**, **Siege Claws**, and **Jumper Strain** make the horde coordinate with your attacks, crack shelters faster, and leap into prey.
 - **Zombie strains.** Victims rise as **shamblers** (slow), **walkers**, **runners** (fast — they catch fleers), **brutes** (tanky), or **bloaters** (burst into an infection cloud when shot, so enemy gunfire backfires).
-- **GTA wanted system.** More infection = higher heat (CALM → ALERTED → POLICE → MILITARY → MARTIAL LAW). Lie low and it cools. At max heat, **hunter-killer teams** track *you* specifically, **telegraphed airstrikes** rain down, and the army rolls in as **assault waves** — walls of soldiers that advance and shove your horde back.
-- **Bosses every 5th level.** A hulking **Behemoth** with a telegraphed shockwave stomp and cannon fire, getting stronger each tier. Boss levels have only a few civilians to rebuild your horde from — you'll need your skills to bring it down.
+- **GTA wanted system.** More infection = higher heat (CALM → ALERTED → POLICE → MILITARY → MARTIAL LAW). Lie low and it cools. The first four levels are a beginner ramp; from level 6, **hunter-killer teams** track *you* specifically, **telegraphed airstrikes** rain down, and the army rolls in as **assault waves** — walls of soldiers that advance and shove your horde back.
+- **Bosses every 5th level.** A hulking **Behemoth** with a telegraphed shockwave stomp and cannon fire, getting stronger each tier. The level 5 boss is tuned as a first-boss preview so new players can see level 6 before later bosses start hitting hard.
 - **The public stays calm** until ~10% of the city is infected, giving you room to build a starter horde before panic spreads.
 
 ## 🆕 Shareable Strain Codes (New)

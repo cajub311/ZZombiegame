@@ -238,6 +238,40 @@
   .draft-card .nm { font-weight: 900; color: var(--inf); margin: 12px 0 6px; letter-spacing: 1px; font-size: 16px; }
   .draft-card .ds { font-size: 12px; color: #b6e6b0; line-height: 1.5; }
   .draft-card .own { font-size: 10px; color: var(--warn); margin-top: 10px; letter-spacing: 1px; }
+  .upgrade-panel {
+    width: min(680px, 94vw);
+    margin-top: 18px;
+    padding: 14px;
+    background: rgba(8,18,10,0.78);
+    border: 1px solid rgba(255,203,59,0.26);
+    border-radius: 12px;
+  }
+  .upgrade-head { display:flex; justify-content:space-between; gap:14px; align-items:center; margin-bottom:10px; color:#b6e6b0; font-size:12px; letter-spacing:1px; text-transform:uppercase; }
+  .upgrade-head b { color: var(--warn); font-size: 15px; }
+  .upgrade-grid { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+  .upgrade-row {
+    display:grid;
+    grid-template-columns: 92px 1fr 34px;
+    gap:9px;
+    align-items:center;
+    min-height:34px;
+    text-align:left;
+  }
+  .upgrade-name { color:var(--ink); font-size:12px; font-weight:900; letter-spacing:1px; text-transform:uppercase; }
+  .upgrade-bars { display:flex; gap:5px; }
+  .upgrade-pip { height:9px; flex:1; min-width:14px; border-radius:9px; background:rgba(255,255,255,0.12); border:1px solid rgba(109,255,91,0.12); }
+  .upgrade-pip.on { background:linear-gradient(90deg, #ffcb3b, #6dff5b); box-shadow:0 0 10px rgba(109,255,91,0.28); }
+  .upgrade-plus {
+    width:34px; height:30px;
+    border:1px solid rgba(109,255,91,0.45);
+    border-radius:8px;
+    background:rgba(20,54,18,0.92);
+    color:var(--inf);
+    font-size:20px;
+    font-weight:900;
+    cursor:pointer;
+  }
+  .upgrade-plus:disabled { opacity:0.28; cursor:default; }
   #rerollBtn {
     margin-top: 24px;
     background: rgba(8,18,10,0.9);
@@ -266,6 +300,9 @@
     .card h2 { margin-bottom: 8px; }
     .controls { gap: 6px 14px; font-size: 13px; }
     .btn { font-size: 19px; padding: 14px 36px; }
+  }
+  @media (max-width: 640px) {
+    .upgrade-grid { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -346,7 +383,11 @@
 <div id="draftScreen" class="overlay hidden">
   <div class="subtitle" style="color:#ffcb3b; letter-spacing:3px;">LEVEL <span id="draftLvl">1</span> CLEARED</div>
   <div class="title" style="font-size:clamp(30px,7vw,64px);">EVOLVE</div>
-  <div style="font-size:14px; color:#9adf93; margin-top:6px; letter-spacing:1px;">Choose one mutation to carry forward</div>
+  <div style="font-size:14px; color:#9adf93; margin-top:6px; letter-spacing:1px;">Spend stat points, then choose one mutation</div>
+  <div class="upgrade-panel">
+    <div class="upgrade-head"><span>Permanent upgrades</span><b id="upgradePoints">0 POINTS</b></div>
+    <div id="upgradeGrid" class="upgrade-grid"></div>
+  </div>
   <div id="draftCards"></div>
   <button id="rerollBtn" type="button">↻ Reroll (4 biomass)</button>
 </div>
@@ -516,12 +557,21 @@
     flashColor: null,
     flashAlpha: 0,
     mods: { fangs:0, packspeed:0, swift:0, hide:0, apex:0, runners:0, vigor:0, trail:0, detonator:0, lifesteal:0, spore:0, smart:0, siege:0, leapers:0 },
+    statPoints: 0,
+    stats: { speed:0, health:0, strength:0, control:0 },
     evos: {},
     boss: null, isBoss: false, bossSpawned: false, bossReward: false, waveTimer: 0,
     rivalTimer: 0, rivalsAnnounced: false, hitStop: 0, infFrac: 0,
     districtCaptures: 0, escaped: 0, objectiveText: "", objectiveStep: 0,
     sheltersBreached: 0,
   };
+  const STAT_UPGRADES = [
+    { id:"speed", name:"Speed", desc:"+ movement and horde pace" },
+    { id:"health", name:"Health", desc:"+20 max HP" },
+    { id:"strength", name:"Strength", desc:"+ bite and building damage" },
+    { id:"control", name:"Control", desc:"+ smarter horde targeting" },
+  ];
+  const STAT_MAX = 5;
 
   const cam = { x: 0, y: 0 };
 
@@ -628,6 +678,7 @@
   // Nearest thing worth biting, for tap-to-aim on touch.
   function nearestPrey() {
     let best = null, bd = Infinity;
+    if (state.boss && state.startCount >= 10) return state.boss;
     for (const h of humans) {
       if (h.state !== "human" && h.state !== "turning") continue;
       const d = dist2(h.x,h.y,player.x,player.y); if (d < bd) { bd = d; best = h; }
@@ -660,14 +711,14 @@
 
     if (i === 0) { // BITE — lunge toward the cursor and chomp what's in front
       const ang = aimAngle();
-      const reach = 1 + state.mods.apex * 0.45 + (state.evos.alphaBite ? 0.35 : 0) + Math.min(0.5, state.startCount / 600);
+      const reach = 1 + state.mods.apex * 0.45 + state.stats.strength * 0.06 + (state.evos.alphaBite ? 0.35 : 0) + Math.min(0.5, state.startCount / 600);
       player.lungeT = 0.16; player.lungeA = ang; player.lungeSpeed = 600 * reach;
       const biteR = 34 * reach;
       const bx = player.x + Math.cos(ang)*18, by = player.y + Math.sin(ang)*18;
       for (const h of humans) if (h.state === "human" && dist2(bx,by,h.x,h.y) < biteR*biteR) startTurn(h);
-      for (const b of blocks) if (!b.breached && b.occupants.length && dist2(bx,by,b.cx,b.cy) < (biteR+b.r)*(biteR+b.r)) damageShelter(b, 1.4 + state.mods.siege * 0.55, true);
+      for (const b of blocks) if (!b.breached && b.occupants.length && dist2(bx,by,b.cx,b.cy) < (biteR+b.r)*(biteR+b.r)) damageShelter(b, 1.4 + state.mods.siege * 0.55 + state.stats.strength * 0.3, true);
       for (const so of soldiers) if (dist2(bx,by,so.x,so.y) < (biteR+so.r)*(biteR+so.r)) { so.infect = (so.infect||0) + 0.5; blood(so.x,so.y); }
-      if (state.boss && dist2(bx,by,state.boss.x,state.boss.y) < (biteR+state.boss.r)*(biteR+state.boss.r)) { state.boss.hp -= 6; blood(state.boss.x,state.boss.y); }
+      if (state.boss && dist2(bx,by,state.boss.x,state.boss.y) < (biteR+state.boss.r)*(biteR+state.boss.r)) { state.boss.hp -= 6 + state.stats.strength * 1.8; blood(state.boss.x,state.boss.y); }
       for (const rv of rivals) if (dist2(bx,by,rv.x,rv.y) < (biteR+rv.r)*(biteR+rv.r)) { rv.hp -= 3; blood(rv.x,rv.y); }
       if (state.mods.spore) { // Spore Burst: bite drops an infection cloud now and then
         state.biteN = (state.biteN||0) + 1;
@@ -774,6 +825,8 @@
     state.hordeMs = 0; state.combo = 0; state.comboT = 0; state.peakHorde = 1;
     state.rivalsAnnounced = false;
     state.mods = { fangs:0, packspeed:0, swift:0, hide:0, apex:0, runners:0, vigor:0, trail:0, detonator:0, lifesteal:0, spore:0, smart:0, siege:0, leapers:0 };
+    state.statPoints = 0;
+    state.stats = { speed:0, health:0, strength:0, control:0 };
     state.evos = {};
     state.biteN = 0; state.trailT = 0;
     ABILITIES.forEach((a, i) => { a.unlocked = (i === 0); a.cd = 0; });
@@ -796,7 +849,7 @@
     // Boss levels (every 5th) have only a few civilians — just enough to keep
     // rebuilding a small horde while you use your skills to bring the boss down.
     const boss = (L % 5 === 0);
-    const N = boss ? (22 + Math.floor(L/5) * 4) : Math.min(240, 55 + L * 20); // capped for phone perf
+    const N = boss ? (24 + Math.floor(L/5) * 5) : Math.min(220, 45 + L * 15); // capped for phone perf
     state.population = N + 1;          // + player
     for (let i = 0; i < N; i++) {
       let x, y, tries = 0;
@@ -923,7 +976,7 @@
     else if (edge === 1) { x = rand(200,WORLD.w-200); y = WORLD.h-60; }
     else if (edge === 2) { x = 60; y = rand(200,WORLD.h-200); }
     else                 { x = WORLD.w-60; y = rand(200,WORLD.h-200); }
-    const hp = (kind === "purifier" ? 100 : 120) + tier * 100;
+    const hp = tier === 1 ? 30 : (kind === "purifier" ? 100 : 120) + tier * 100;
     state.boss = {
       x, y, vx:0, vy:0, aim:0, muzzle:0, type:"boss", kind,
       hp, maxHp: hp, r: kind === "purifier" ? 26 : 34,
@@ -966,7 +1019,8 @@
             }
           }
           if (dist2(player.x,player.y,b.x,b.y) < R*R) {
-            player.hp -= (16 + b.tier*4) * (1 - Math.min(0.6, state.mods.hide*0.22)); blood(player.x,player.y);
+            const tutorialBoss = b.tier === 1 ? 0.08 : 1;
+            player.hp -= (16 + b.tier*4) * tutorialBoss * (1 - Math.min(0.6, state.mods.hide*0.22)); blood(player.x,player.y);
             if (player.hp <= 0) return endGame();
           }
           b.stomping = false; b.t = rand(3.2, 4.2);
@@ -994,7 +1048,8 @@
             }
           }
           if (dist2(player.x,player.y,b.x,b.y) < R*R) {
-            player.hp -= (22 + b.tier*5) * (1 - Math.min(0.6, state.mods.hide*0.22)); blood(player.x,player.y);
+            const tutorialBoss = b.tier === 1 ? 0.08 : 1;
+            player.hp -= (22 + b.tier*5) * tutorialBoss * (1 - Math.min(0.6, state.mods.hide*0.22)); blood(player.x,player.y);
             if (player.hp <= 0) return endGame();
           }
           b.stomping = false; b.t = rand(3, 4);
@@ -1006,7 +1061,7 @@
           for (let i = 0; i < n; i++) {
             const a = b.aim + (i-(n-1)/2)*0.15;
             bullets.push({ x:b.x+Math.cos(a)*b.r, y:b.y+Math.sin(a)*b.r,
-              vx:Math.cos(a)*330, vy:Math.sin(a)*330, r:4, life:2.2, dmg:10+b.tier*2 });
+              vx:Math.cos(a)*330, vy:Math.sin(a)*330, r:4, life:2.2, dmg:(10+b.tier*2) * (b.tier === 1 ? 0.08 : 1) });
           }
           b.muzzle = 0.1; AudioFX.gun(); b.t = rand(2.2, 3.2);
         }
@@ -1032,7 +1087,7 @@
   function startTurn(h) {
     if (h.state !== "human") return;
     h.state = "turning";
-    const fang = 1 - Math.min(0.72, state.mods.fangs * 0.22); // Sharper Fangs speeds turning
+    const fang = 1 - Math.min(0.78, state.mods.fangs * 0.22 + state.stats.strength * 0.035); // Sharper Fangs speeds turning
     h.turn = rand(0.8, 1.5) * fang;
     burst(h.x, h.y, "#9dff7a");
   }
@@ -1243,6 +1298,39 @@
     for (let i=0;i<18;i++) burst(d.x + rand(-d.r*0.35,d.r*0.35), d.y + rand(-d.r*0.35,d.r*0.35), "#6dff5b");
     toast(msg);
   }
+  function allBuildingsConquered() {
+    return blocks.length > 0 && blocks.every(b => b.breached || districts.some(d => d.block === b && d.secured));
+  }
+  function noConvertableHumansLeft() {
+    return !humans.some(h => h.state === "human" || h.state === "turning" || h.state === "hidden");
+  }
+  function clearFractionForLevel() {
+    if (state.level === 1) return 0.22;
+    if (state.level === 2) return 0.28;
+    if (state.level === 3) return 0.34;
+    if (state.level === 4) return 0.40;
+    return 0.80;
+  }
+  function earlyHordeTarget() {
+    if (state.level === 1) return 7;
+    if (state.level === 2) return 10;
+    if (state.level === 3) return 12;
+    if (state.level === 4) return 16;
+    return Infinity;
+  }
+  function earlyMomentumReached(zombieCount) {
+    return state.level <= 4 && zombieCount >= earlyHordeTarget();
+  }
+  function visiblePreyCount() {
+    let n = 0;
+    for (const h of humans) if (h.state === "human" || h.state === "turning") n++;
+    return n;
+  }
+  function levelTakeoverReached(remaining) {
+    const civTotal = Math.max(1, state.population - 1);
+    const convertedOrRemoved = civTotal - remaining;
+    return convertedOrRemoved / civTotal >= clearFractionForLevel();
+  }
   function updateObjectives(zombieCount, remaining) {
     const lines = [
       { done:zombieCount >= 6, text:`BITE TO START A CHAIN (${Math.min(zombieCount,6)}/6)` },
@@ -1250,7 +1338,7 @@
       { done:state.districtCaptures >= 1, text:"OVERRUN A NAMED DISTRICT" },
       { done:ABILITIES.some((a, i) => i > 0 && a.unlocked), text:"CLEAR THE LEVEL AND PICK A MUTATION" },
       { done:Object.keys(state.evos).length > 0, text:"COMBINE MUTATIONS TO EVOLVE YOUR STRAIN" },
-      { done:remaining <= Math.max(1, Math.floor((state.population - 1) * 0.18)), text:"FINISH THE CITY BEFORE EVACUATION" },
+      { done:earlyMomentumReached(zombieCount) || levelTakeoverReached(remaining) || allBuildingsConquered(), text:state.level <= 4 ? `BUILD A HORDE (${Math.min(zombieCount, earlyHordeTarget())}/${earlyHordeTarget()})` : `TAKE ${Math.round(clearFractionForLevel()*100)}% OR ALL BUILDINGS` },
     ];
     const active = lines.find(x => !x.done);
     const extra = state.escaped ? ` · ${state.escaped} ESCAPED` : "";
@@ -1306,7 +1394,7 @@
         if (Math.hypot(tx,ty) > 14) { mx = tx; my = ty; }
       }
       const ml = Math.hypot(mx, my) || 1;
-      const speed = 215 + state.mods.swift * 22;  // Adrenal Glands stack
+      const speed = 215 + state.mods.swift * 22 + state.stats.speed * 14;  // Adrenal Glands stack
       player.vx = (mx/ml) * speed;
       player.vy = (my/ml) * speed;
       player.x = clamp(player.x + player.vx*dt, 14, WORLD.w-14);
@@ -1440,19 +1528,20 @@
           const d = dist2(h.x,h.y,t.x,t.y);
           if (d < bd) { bd = d; best = t; }
         }
-        const command = state.mods.smart ? nearestPrey() : null;
-        const shelterTarget = nearestOccupiedShelter(h.x, h.y, best ? 420 + state.mods.smart*90 : 900 + state.mods.smart*120);
+        const command = (state.mods.smart || state.stats.control) ? nearestPrey() : null;
+        const shelterTarget = nearestOccupiedShelter(h.x, h.y, best ? 420 + state.mods.smart*90 + state.stats.control*45 : 900 + state.mods.smart*120 + state.stats.control*60);
         // Chase a nearby victim; otherwise surge toward Patient Zero so the
         // horde reads as one growing swarm around you instead of scattering.
         let tx, ty;
-        const FOLLOW = 520 + state.mods.smart * 90;
-        if (command && command.shelter && dist2(h.x,h.y,command.x,command.y) < (760 + state.mods.smart*140)*(760 + state.mods.smart*140)) { tx = command.x; ty = command.y; }
+        const FOLLOW = 520 + state.mods.smart * 90 + state.stats.control * 70;
+        if (state.boss && (state.startCount >= 10 || !best)) { tx = state.boss.x; ty = state.boss.y; }
+        else if (command && command.shelter && dist2(h.x,h.y,command.x,command.y) < (760 + state.mods.smart*140)*(760 + state.mods.smart*140)) { tx = command.x; ty = command.y; }
         else if (command && command.state === "human" && dist2(h.x,h.y,command.x,command.y) < (650 + state.mods.smart*120)*(650 + state.mods.smart*120)) { tx = command.x; ty = command.y; }
         else if (shelterTarget && (!best || dist2(h.x,h.y,shelterTarget.cx,shelterTarget.cy) < bd * (1.35 + state.mods.smart*0.22))) { tx = shelterTarget.cx; ty = shelterTarget.cy; }
         else if (best && bd < FOLLOW*FOLLOW) { tx = best.x; ty = best.y; }
         else { tx = player.x; ty = player.y; }
         const dx = tx - h.x, dy = ty - h.y, dl = Math.hypot(dx,dy) || 1;
-        const packBonus = state.mods.packspeed * 0.12 + (state.evos.feralPack ? 0.10 : 0);
+        const packBonus = state.mods.packspeed * 0.12 + state.stats.speed * 0.035 + state.stats.control * 0.025 + (state.evos.feralPack ? 0.10 : 0);
         const base = (h.speed || 110) * (1 + packBonus);
         if (h.ztype === "leaper") {
           h.leapCd = (h.leapCd || 0) - dt;
@@ -1469,7 +1558,7 @@
         // infect on contact
         if (best && bd < (h.r + best.r + 1)*(h.r + best.r + 1)) startTurn(best);
         if (shelterTarget && dist2(h.x,h.y,shelterTarget.cx,shelterTarget.cy) < (h.r+shelterTarget.r)*(h.r+shelterTarget.r)) {
-          const hit = h.ztype === "brute" ? 1.6 : (h.ztype === "leaper" ? 1.15 : 0.75);
+          const hit = (h.ztype === "brute" ? 1.6 : (h.ztype === "leaper" ? 1.15 : 0.75)) + state.stats.strength * 0.08;
           damageShelter(shelterTarget, dt * hit, false);
         }
       }
@@ -1483,9 +1572,9 @@
     const stationActive = districts.some(d => d.id === "station" && !d.secured && d.progress > 0.15);
     const maxSoldiers = Math.min(20, Math.floor(2 + L*1.05 + threatN * 7)); // capped; surge comes from waves
     const hurtRelief = player.hp < state.maxHp*0.35 ? 1.6 : 1; // brief lull when near death
-    const earlyGrace = L <= 2 && state.time < (L === 1 ? 22 : 14);
+    const earlyGrace = L <= 3 && state.time < (L <= 2 ? 999 : 28);
     const spawnEvery = Math.max(0.55, ((3.6 - L*0.14) - threatN * 1.85 - (stationActive ? 0.35 : 0)) * hurtRelief);
-    if (!earlyGrace && state.soldierTimer <= 0 && soldiers.length < maxSoldiers && state.threat > (L <= 2 ? 12 : 6) && !state.boss) {
+    if (L >= 6 && !earlyGrace && state.soldierTimer <= 0 && soldiers.length < maxSoldiers && state.threat > 6 && !state.boss) {
       state.soldierTimer = spawnEvery;
       // hunter-killers grow more common with level and heat — they come for YOU
       const hunterChance = Math.min(0.55, 0.08*L + threatN*0.3);
@@ -1500,7 +1589,7 @@
     }
 
     // assault-wave director: coordinated walls that advance as a front
-    if (state.level >= 3 && state.threat > 18 && !state.boss) {
+    if (state.level >= 6 && state.threat > 20 && !state.boss) {
       state.waveTimer -= dt;
       if (state.waveTimer <= 0) {
         state.waveTimer = Math.max(9, 20 - state.level*0.7);
@@ -1511,7 +1600,7 @@
     // responders protect occupied shelters, forcing the horde to overwhelm
     // defended buildings instead of just waiting for civilians to reappear.
     state.guardTimer -= dt;
-    if (state.level >= 3 && state.panicked && state.threat > 12 && !state.boss && state.guardTimer <= 0 && soldiers.length < maxSoldiers + 3) {
+    if (state.level >= 6 && state.panicked && state.threat > 14 && !state.boss && state.guardTimer <= 0 && soldiers.length < maxSoldiers + 3) {
       state.guardTimer = Math.max(5, 11 - state.level * 0.35);
       let target = null, occ = 0;
       for (const b of blocks) {
@@ -1790,16 +1879,17 @@
     if (state.shake > 0) state.shake = Math.max(0, state.shake - dt*30);
     if (state.flashAlpha > 0) state.flashAlpha = Math.max(0, state.flashAlpha - dt*1.2);
 
-    // ---- level-clear check: clearing the last stragglers is tedious, so the
-    //      level ends once ~92% of the city is infected (the rest "escape").
+    // ---- level-clear check: win at 80% takeover, by conquering every shelter,
+    //      or when there is nobody left who can still be converted.
     let remaining = 0;
     for (const h of humans) if (h.state === "human" || h.state === "turning" || h.state === "hidden") remaining++;
     if (state.isBoss) {
       // boss levels end only when the Behemoth is down
       if (state.bossSpawned && !state.boss) return levelComplete();
     } else {
-      const clearAt = Math.floor((state.population - 1) * 0.08);
-      if (remaining <= clearAt) return levelComplete();
+      const stragglerLimit = state.level <= 4 ? Math.max(12, Math.floor(state.population * 0.18)) : 4;
+      const hiddenOnlyCleanup = visiblePreyCount() <= stragglerLimit && state.startCount >= (state.level <= 2 ? 8 : 14);
+      if (earlyMomentumReached(zombieCount) || levelTakeoverReached(remaining) || allBuildingsConquered() || noConvertableHumansLeft() || hiddenOnlyCleanup) return levelComplete();
     }
 
     updateHUD(zombieCount, infectFrac, remaining);
@@ -2351,6 +2441,39 @@
     });
   }
 
+  function updateUpgradeUI() {
+    const pts = el("upgradePoints");
+    const grid = el("upgradeGrid");
+    if (!pts || !grid) return;
+    pts.textContent = `${state.statPoints} POINT${state.statPoints === 1 ? "" : "S"}`;
+    grid.innerHTML = "";
+    for (const st of STAT_UPGRADES) {
+      const lvl = state.stats[st.id] || 0;
+      const row = document.createElement("div");
+      row.className = "upgrade-row";
+      const pips = Array.from({ length: STAT_MAX }, (_, i) => `<i class="upgrade-pip${i < lvl ? " on" : ""}"></i>`).join("");
+      row.innerHTML = `<div><div class="upgrade-name">${st.name}</div><div style="font-size:10px;color:#8fc98a;line-height:1.2;">${st.desc}</div></div>` +
+        `<div class="upgrade-bars">${pips}</div>` +
+        `<button class="upgrade-plus" type="button" aria-label="Upgrade ${st.name}">+</button>`;
+      const btn = row.querySelector("button");
+      btn.disabled = state.statPoints <= 0 || lvl >= STAT_MAX;
+      btn.addEventListener("click", () => spendStat(st.id));
+      grid.appendChild(row);
+    }
+  }
+
+  function spendStat(id) {
+    if (state.statPoints <= 0 || state.stats[id] == null || state.stats[id] >= STAT_MAX) return;
+    state.statPoints--;
+    state.stats[id]++;
+    if (id === "health") {
+      state.maxHp += 20;
+      player.hp = Math.min(state.maxHp, player.hp + 20);
+    }
+    AudioFX.pickup();
+    updateUpgradeUI();
+  }
+
   let toastT = 0;
   function toast(msg) {
     const t = el("toast");
@@ -2404,9 +2527,11 @@
     const b = el("rerollBtn");
     b.textContent = `↻ Reroll (${REROLL_COST} biomass) · have ${state.dna}`;
     b.style.opacity = state.dna >= REROLL_COST ? "1" : "0.45";
+    updateUpgradeUI();
   }
   function levelComplete() {
     AudioFX.levelup();
+    state.statPoints++;
     state.phase = "draft";
     el("hud").classList.add("hidden");
     el("abilities").classList.add("hidden");
