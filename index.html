@@ -712,21 +712,23 @@
   }
 
   // ============================================================ SPAWN / RESET
-  // Four landmark shelters: these are the only solid buildings.
+  // Five landmark shelters: these are the only solid buildings.
   let blocks = [];
   function buildCity() {
     blocks = []; districts = [];
     addDistrict("mall", "MALL", "BIG CROWD", "#ffcb3b", 360, 360, 260, 190, 210);
     addDistrict("hospital", "HOSPITAL", "SLOWS TURNING", "#5bd6ff", WORLD.w - 360, 360, 220, 175, 190);
+    addDistrict("civic", "CIVIC HALL", "SAFEHOUSE", "#e8ffe5", WORLD.w/2, WORLD.h/2, 230, 170, 190);
     addDistrict("station", "POLICE", "HEAT SOURCE", "#ff3b4e", 360, WORLD.h - 360, 230, 170, 195);
     addDistrict("subway", "SUBWAY", "EVAC ROUTE", "#b96bff", WORLD.w - 360, WORLD.h - 360, 240, 180, 200);
   }
   function addDistrict(id, name, role, color, x, y, w, h, r) {
     const cx = x + rand(-35,35), cy = y + rand(-35,35);
-    const hp = Math.round(clamp(42 + (w*h) / 1700, 72, 130));
-    const cap = Math.min(16, 8 + Math.floor((w*h) / 14000));
+    const hp = Math.round(clamp(58 + (w*h) / 1200, 120, 220));
+    const cap = Math.min(34, 18 + Math.floor((w*h) / 6500));
     const b = {
-      id, name, role, color, x:cx-w/2, y:cy-h/2, w, h, cx, cy, r:Math.max(58, Math.min(w,h)*0.42),
+      id, name, role, color, x:cx-w/2, y:cy-h/2, w, h, cx, cy,
+      r, outerR:r + 115,
       shade:0.12, hp, maxHp:hp, cap, occupants:[], breached:false, pulse:rand(0, TAU),
       pressure:0, reinforced:0, barricadeMax:4, barricadeT:0,
     };
@@ -741,23 +743,16 @@
   function collideWithBlocks(e, radius) {
     for (const b of blocks) {
       if (b.breached) continue;
-      const nx = clamp(e.x, b.x, b.x + b.w);
-      const ny = clamp(e.y, b.y, b.y + b.h);
-      let dx = e.x - nx, dy = e.y - ny;
+      let dx = e.x - b.cx, dy = e.y - b.cy;
       let d2 = dx*dx + dy*dy;
-      if (d2 > radius*radius) continue;
+      const blockR = b.r + radius;
+      if (d2 > blockR*blockR) continue;
       if (d2 < 0.0001) {
-        const left = Math.abs(e.x - b.x), right = Math.abs(b.x + b.w - e.x);
-        const top = Math.abs(e.y - b.y), bottom = Math.abs(b.y + b.h - e.y);
-        const m = Math.min(left, right, top, bottom);
-        if (m === left) { dx = -1; dy = 0; e.x = b.x - radius; }
-        else if (m === right) { dx = 1; dy = 0; e.x = b.x + b.w + radius; }
-        else if (m === top) { dx = 0; dy = -1; e.y = b.y - radius; }
-        else { dx = 0; dy = 1; e.y = b.y + b.h + radius; }
+        dx = 1; dy = 0; e.x = b.cx + blockR;
         if (e.vx != null) e.vx *= 0.35;
         if (e.vy != null) e.vy *= 0.35;
       } else {
-        const d = Math.sqrt(d2), push = radius - d + 0.1;
+        const d = Math.sqrt(d2), push = blockR - d + 0.1;
         e.x += (dx / d) * push;
         e.y += (dy / d) * push;
         if (e.vx != null && e.vy != null) {
@@ -795,7 +790,7 @@
     humans = []; soldiers = []; bullets = []; spits = []; pickups = []; particles = []; clouds = []; strikes = []; rivals = []; decals = [];
     buildCity();
 
-    player.x = WORLD.w/2; player.y = WORLD.h/2; player.vx = 0; player.vy = 0;
+    player.x = WORLD.w/2; player.y = WORLD.h/2 + 310; player.vx = 0; player.vy = 0;
     player.lungeT = 0; player.hp = state.maxHp;
 
     // Boss levels (every 5th) have only a few civilians — just enough to keep
@@ -1239,6 +1234,10 @@
     } else if (d.id === "subway") {
       msg += " — escapes blocked";
       state.dna += 3;
+    } else if (d.id === "civic") {
+      msg += " — safehouse cracked";
+      state.dna += 3;
+      frenzyT = Math.max(frenzyT, 3);
     }
     ring(d.x, d.y, d.r, "#6dff5b");
     for (let i=0;i<18;i++) burst(d.x + rand(-d.r*0.35,d.r*0.35), d.y + rand(-d.r*0.35,d.r*0.35), "#6dff5b");
@@ -1382,10 +1381,10 @@
           if (z.state !== "zombie") continue;
           if (dist2(h.x,h.y,z.x,z.y) < SIGHT*SIGHT) { fx += h.x - z.x; fy += h.y - z.y; threatened = true; }
         }
-        const shelter = nearestShelter(h.x, h.y, panic ? 520 : 230);
+        const shelter = panic ? nearestShelter(h.x, h.y, 760) : null;
         const evacCap = Math.max(5, Math.floor(state.population * 0.09));
         const evac = panic && state.level >= 2 && infectFrac > 0.30 && state.escaped < evacCap && !threatened && nearestOpenDistrict(h.x, h.y, "subway");
-        const shelterReady = panic && infectFrac > 0.34 && zombieCount >= 18 && h.hideBias < 0.22;
+        const shelterReady = panic && h.hideBias < 0.32;
         if (shelterReady && shelter && threatened && dist2(h.x,h.y,shelter.cx,shelter.cy) < 150*150) {
           enterShelter(h, shelter);
         } else if (panic && threatened) {
@@ -1400,12 +1399,12 @@
             state.escaped++;
             state.threat = clamp(state.threat + 1.2, 0, 100);
           }
-        } else if (shelter && ((panic && infectFrac > 0.14) || dist2(h.x,h.y,shelter.cx,shelter.cy) < 230*230)) {
+        } else if (shelter) {
           const sx = shelter.cx - h.x, sy = shelter.cy - h.y, sl = Math.hypot(sx,sy) || 1;
-          const orbit = dist2(h.x,h.y,shelter.cx,shelter.cy) < (shelter.r+18)*(shelter.r+18);
+          const orbit = dist2(h.x,h.y,shelter.cx,shelter.cy) < (shelter.outerR)*(shelter.outerR);
           h.vx = orbit ? (-sy/sl) * 28 : (sx/sl) * (panic ? 76 : 34);
           h.vy = orbit ? (sx/sl) * 28 : (sy/sl) * (panic ? 76 : 34);
-          if (shelterReady && dist2(h.x,h.y,shelter.cx,shelter.cy) < (shelter.r*0.7)*(shelter.r*0.7)) enterShelter(h, shelter);
+          if (shelterReady && dist2(h.x,h.y,shelter.cx,shelter.cy) < (shelter.r+20)*(shelter.r+20)) enterShelter(h, shelter);
         } else {
           // wander
           h.wanderT -= dt;
@@ -1838,6 +1837,15 @@
     for (const d of districts) {
       if (d.x < cam.x-d.r || d.x > cam.x+W+d.r || d.y < cam.y-d.r || d.y > cam.y+H+d.r) continue;
       const beat = 0.08 * Math.sin(d.pulse * 3);
+      if (d.block && !d.block.breached) {
+        ctx.globalAlpha = 0.12;
+        ctx.strokeStyle = d.color;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([9, 12]);
+        ctx.beginPath(); ctx.arc(d.x, d.y, d.block.outerR, 0, TAU); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+      }
       ctx.globalAlpha = d.secured ? 0.34 : 0.18 + beat;
       ctx.fillStyle = d.secured ? "#6dff5b" : d.color;
       ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, TAU); ctx.fill();
