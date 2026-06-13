@@ -47,12 +47,15 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: safe center;   /* never clips/centres content off-screen */
     text-align: center;
     padding: 24px;
     background: radial-gradient(circle at 50% 35%, rgba(20,60,25,0.55), rgba(2,5,3,0.94));
     z-index: 20;
     transition: opacity 0.35s ease;
+    overflow-y: auto;                /* scroll if content is taller than screen */
+    touch-action: pan-y;             /* allow finger-scroll on the menus (canvas stays locked) */
+    -webkit-overflow-scrolling: touch;
   }
   .overlay.hidden { opacity: 0; pointer-events: none; }
 
@@ -235,6 +238,12 @@
     .ability .name { font-size: 8px; }
     .hud-center .big { font-size: 26px; }
     #hud { font-size: 13px; }
+    /* keep the start/end menus compact so the buttons are reachable on phones */
+    .title { font-size: clamp(36px, 12vw, 60px); }
+    .card { margin-top: 14px; padding: 14px 16px; }
+    .card h2 { margin-bottom: 8px; }
+    .controls { gap: 6px 14px; font-size: 13px; }
+    .btn { font-size: 19px; padding: 14px 36px; }
   }
 </style>
 </head>
@@ -272,6 +281,7 @@
   <div class="title">PATIENT&nbsp;ZERO</div>
   <div class="subtitle">YOU ARE THE OUTBREAK</div>
   <div class="subtitle" id="bestLine" style="font-size:13px; color:#ffcb3b; margin-top:4px; min-height:16px;"></div>
+  <button class="btn" id="startBtn">Begin Outbreak</button>
   <div class="card">
     <h2>Mission</h2>
     <div style="font-size:14px; line-height:1.6; color:#cdeec9; text-align:left;">
@@ -295,7 +305,6 @@
       <br><span style="color:var(--warn)">📱 Mobile:</span> left side of screen moves, right side aims &amp; bites.
     </div>
   </div>
-  <button class="btn" id="startBtn">Begin Outbreak</button>
 </div>
 
 <!-- End screen -->
@@ -483,9 +492,9 @@
     hunterAnnounced: false,
     flashColor: null,
     flashAlpha: 0,
-    mods: { fangs:0, packspeed:0, swift:0, hide:0, apex:0, runners:0, vigor:0 },
+    mods: { fangs:0, packspeed:0, swift:0, hide:0, apex:0, runners:0, vigor:0, trail:0, detonator:0, lifesteal:0, spore:0 },
     boss: null, isBoss: false, bossSpawned: false, bossReward: false, waveTimer: 0,
-    rivalTimer: 0, rivalsAnnounced: false,
+    rivalTimer: 0, rivalsAnnounced: false, hitStop: 0, infFrac: 0,
   };
 
   const cam = { x: 0, y: 0 };
@@ -500,6 +509,7 @@
   let clouds = [];    // bloater infection clouds {x,y,r,life,max}
   let strikes = [];   // martial-law airstrikes {x,y,t,r,done}
   let rivals = [];    // Night Stalkers — a rival strain {x,y,r,hp,anim}
+  let decals = [];    // persistent gore on the ground {x,y,r,a,c}
   let player = null;
 
   // ============================================================ ABILITIES
@@ -530,6 +540,8 @@
     { id:"runners",  name:"Rabid Strain",   icon:"🏃", desc:"More victims rise as fast runners.", repeat:true },
     { id:"trail",    name:"Toxic Trail",    icon:"🟢", desc:"Leave an infectious cloud as you move." },
     { id:"detonator",name:"Detonator",      icon:"💥", desc:"Zombies shot dead burst into a cloud." },
+    { id:"lifesteal",name:"Vampiric Bite",  icon:"🩸", desc:"Infecting humans heals you.", repeat:true },
+    { id:"spore",    name:"Spore Burst",    icon:"💨", desc:"Your bite releases an infection cloud.", repeat:true },
   ];
   function applyPower(id) {
     const slot = ABILITY_OF[id];
@@ -585,6 +597,10 @@
       for (const so of soldiers) if (dist2(bx,by,so.x,so.y) < (biteR+so.r)*(biteR+so.r)) { so.infect = (so.infect||0) + 0.5; blood(so.x,so.y); }
       if (state.boss && dist2(bx,by,state.boss.x,state.boss.y) < (biteR+state.boss.r)*(biteR+state.boss.r)) { state.boss.hp -= 6; blood(state.boss.x,state.boss.y); }
       for (const rv of rivals) if (dist2(bx,by,rv.x,rv.y) < (biteR+rv.r)*(biteR+rv.r)) { rv.hp -= 3; blood(rv.x,rv.y); }
+      if (state.mods.spore) { // Spore Burst: bite drops an infection cloud now and then
+        state.biteN = (state.biteN||0) + 1;
+        if (state.biteN % Math.max(2, 4 - state.mods.spore) === 0) clouds.push({ x:bx, y:by, r:40 + state.mods.spore*8, life:0.8, max:0.8 });
+      }
       burst(bx, by, "#9dff7a"); AudioFX.bite();
       a.cd = a.max;
     } else if (i === 1) { // toxic spit
@@ -600,7 +616,7 @@
       let n = 0;
       for (const h of humans) if (h.state === "human" && dist2(h.x,h.y,player.x,player.y) < R*R) { startTurn(h); n++; }
       ring(player.x, player.y, R, "#6dff5b");
-      state.shake = 14; AudioFX.pandemic();
+      state.shake = 14; state.hitStop = 0.05; AudioFX.pandemic();
       toast(n > 0 ? `PANDEMIC! +${n} turning` : "PANDEMIC!");
       a.cd = a.max;
     } else if (i === 3) { // frenzy
@@ -640,7 +656,7 @@
     state.dna = 0; state.totalInfected = 0; state.turnedSoldiers = 0;
     state.hordeMs = 0; state.combo = 0; state.comboT = 0; state.peakHorde = 1;
     state.rivalsAnnounced = false;
-    state.mods = { fangs:0, packspeed:0, swift:0, hide:0, apex:0, runners:0, vigor:0, trail:0, detonator:0 };
+    state.mods = { fangs:0, packspeed:0, swift:0, hide:0, apex:0, runners:0, vigor:0, trail:0, detonator:0, lifesteal:0, spore:0 };
     ABILITIES.forEach((a, i) => { a.unlocked = (i === 0); a.cd = 0; });
     player = {
       x: WORLD.w/2, y: WORLD.h/2, vx:0, vy:0, r: 13,
@@ -652,7 +668,7 @@
   // (Re)build the city + civilians for the current level, harder each time.
   function buildLevel() {
     const L = state.level;
-    humans = []; soldiers = []; bullets = []; spits = []; pickups = []; particles = []; clouds = []; strikes = []; rivals = [];
+    humans = []; soldiers = []; bullets = []; spits = []; pickups = []; particles = []; clouds = []; strikes = []; rivals = []; decals = [];
     buildCity();
 
     player.x = WORLD.w/2; player.y = WORLD.h/2; player.vx = 0; player.vy = 0;
@@ -753,21 +769,26 @@
   }
 
   // ============================================================ BOSS
+  const BOSS_KINDS = ["behemoth", "purifier"];
   function spawnBoss() {
     const L = state.level, tier = Math.floor(L/5);
+    const kind = BOSS_KINDS[(tier - 1) % BOSS_KINDS.length]; // L5 Behemoth, L10 Purifier, L15 Behemoth…
     const edge = randInt(0,3); let x, y;
     if (edge === 0)      { x = rand(200,WORLD.w-200); y = 60; }
     else if (edge === 1) { x = rand(200,WORLD.w-200); y = WORLD.h-60; }
     else if (edge === 2) { x = 60; y = rand(200,WORLD.h-200); }
     else                 { x = WORLD.w-60; y = rand(200,WORLD.h-200); }
-    const hp = 120 + tier * 100;
+    const hp = (kind === "purifier" ? 100 : 120) + tier * 100;
     state.boss = {
-      x, y, vx:0, vy:0, aim:0, muzzle:0, type:"boss",
-      hp, maxHp: hp, r: 34, speed: 54 + tier*3, tier,
+      x, y, vx:0, vy:0, aim:0, muzzle:0, type:"boss", kind,
+      hp, maxHp: hp, r: kind === "purifier" ? 26 : 34,
+      speed: (kind === "purifier" ? 96 : 54) + tier*3, tier,
       t: rand(2.5, 3.5), tele: 0, stomping: false,
     };
     state.bossSpawned = true;
-    toast("☠ THE BEHEMOTH HAS ARRIVED — USE YOUR SKILLS");
+    toast(kind === "purifier"
+      ? "☣ VECTOR CONTROL — it purges your horde, swarm it down!"
+      : "☠ THE BEHEMOTH — use your skills to bring it down");
     state.flashColor = "#ff3b4e"; state.flashAlpha = 0.45; state.shake = Math.max(state.shake, 16);
     AudioFX.horn();
   }
@@ -775,54 +796,88 @@
   function updateBoss(dt) {
     const b = state.boss; if (!b) return;
     const dx = player.x - b.x, dy = player.y - b.y, dl = Math.hypot(dx,dy) || 1;
-    if (!b.stomping) {
-      b.x = clamp(b.x + (dx/dl)*b.speed*dt, 20, WORLD.w-20);
-      b.y = clamp(b.y + (dy/dl)*b.speed*dt, 20, WORLD.h-20);
-    }
     b.aim = Math.atan2(dy, dx);
     if (b.muzzle > 0) b.muzzle -= dt;
     b.t -= dt;
-    const R = 150 + b.tier * 22;
-    if (b.tele > 0) {
-      b.tele -= dt; b.stomping = true;
-      if (b.tele <= 0) {
-        ring(b.x, b.y, R, "#ff3b4e"); state.shake = 18;
-        state.flashColor = "#ffcb3b"; state.flashAlpha = 0.45; AudioFX.strike();
-        for (let k=0;k<26;k++) burst(b.x, b.y, "#ffcb3b");
-        for (const h of humans) {
-          if ((h.state==="zombie"||h.state==="turning") && dist2(h.x,h.y,b.x,b.y) < R*R) {
-            h.dead = true; if (h.state==="zombie") state.startCount = Math.max(1, state.startCount-1);
-          }
-        }
-        if (dist2(player.x,player.y,b.x,b.y) < R*R) {
-          player.hp -= (22 + b.tier*5) * (1 - Math.min(0.6, state.mods.hide*0.22)); blood(player.x,player.y);
-          if (player.hp <= 0) return endGame();
-        }
-        b.stomping = false; b.t = rand(3, 4);
+
+    if (b.kind === "purifier") {
+      // kites the player and emits decon PULSES that cure (kill) your zombies
+      if (!b.stomping) {
+        const moveDir = dl < 300 ? -1 : 0.3; // back off when crowded, else drift in
+        b.x = clamp(b.x + (dx/dl)*b.speed*moveDir*dt + (-dy/dl)*40*dt, 20, WORLD.w-20);
+        b.y = clamp(b.y + (dy/dl)*b.speed*moveDir*dt + (dx/dl)*40*dt, 20, WORLD.h-20);
       }
-    } else if (b.t <= 0) {
-      if (dl < 230) { b.tele = 1.0; } // wind up a shockwave stomp
-      else {                          // otherwise a spread of cannon fire
-        const n = 7 + b.tier*2;
-        for (let i = 0; i < n; i++) {
-          const a = b.aim + (i-(n-1)/2)*0.15;
-          bullets.push({ x:b.x+Math.cos(a)*b.r, y:b.y+Math.sin(a)*b.r,
-            vx:Math.cos(a)*330, vy:Math.sin(a)*330, r:4, life:2.2, dmg:10+b.tier*2 });
+      const R = 170 + b.tier*18;
+      if (b.tele > 0) {
+        b.tele -= dt; b.stomping = true;
+        if (b.tele <= 0) {
+          ring(b.x, b.y, R, "#5bd6ff"); state.shake = 14; state.hitStop = 0.04;
+          state.flashColor = "#7fe8ff"; state.flashAlpha = 0.4; AudioFX.strike();
+          for (let k=0;k<22;k++) burst(b.x, b.y, "#9fe8ff");
+          for (const h of humans) {
+            if ((h.state==="zombie"||h.state==="turning") && dist2(h.x,h.y,b.x,b.y) < R*R) {
+              h.dead = true; if (h.state==="zombie") state.startCount = Math.max(1, state.startCount-1);
+            }
+          }
+          if (dist2(player.x,player.y,b.x,b.y) < R*R) {
+            player.hp -= (16 + b.tier*4) * (1 - Math.min(0.6, state.mods.hide*0.22)); blood(player.x,player.y);
+            if (player.hp <= 0) return endGame();
+          }
+          b.stomping = false; b.t = rand(3.2, 4.2);
         }
-        b.muzzle = 0.1; AudioFX.gun(); b.t = rand(2.2, 3.2);
+      } else if (b.t <= 0) {
+        b.tele = 1.0; // telegraph a decon pulse
+      }
+    } else {
+      // BEHEMOTH: marches in, stomps up close, cannon fan at range
+      if (!b.stomping) {
+        b.x = clamp(b.x + (dx/dl)*b.speed*dt, 20, WORLD.w-20);
+        b.y = clamp(b.y + (dy/dl)*b.speed*dt, 20, WORLD.h-20);
+      }
+      const R = 150 + b.tier * 22;
+      if (b.tele > 0) {
+        b.tele -= dt; b.stomping = true;
+        if (b.tele <= 0) {
+          ring(b.x, b.y, R, "#ff3b4e"); state.shake = 18; state.hitStop = 0.05;
+          state.flashColor = "#ffcb3b"; state.flashAlpha = 0.45; AudioFX.strike();
+          for (let k=0;k<26;k++) burst(b.x, b.y, "#ffcb3b");
+          for (const h of humans) {
+            if ((h.state==="zombie"||h.state==="turning") && dist2(h.x,h.y,b.x,b.y) < R*R) {
+              h.dead = true; if (h.state==="zombie") state.startCount = Math.max(1, state.startCount-1);
+            }
+          }
+          if (dist2(player.x,player.y,b.x,b.y) < R*R) {
+            player.hp -= (22 + b.tier*5) * (1 - Math.min(0.6, state.mods.hide*0.22)); blood(player.x,player.y);
+            if (player.hp <= 0) return endGame();
+          }
+          b.stomping = false; b.t = rand(3, 4);
+        }
+      } else if (b.t <= 0) {
+        if (dl < 230) { b.tele = 1.0; }
+        else {
+          const n = 7 + b.tier*2;
+          for (let i = 0; i < n; i++) {
+            const a = b.aim + (i-(n-1)/2)*0.15;
+            bullets.push({ x:b.x+Math.cos(a)*b.r, y:b.y+Math.sin(a)*b.r,
+              vx:Math.cos(a)*330, vy:Math.sin(a)*330, r:4, life:2.2, dmg:10+b.tier*2 });
+          }
+          b.muzzle = 0.1; AudioFX.gun(); b.t = rand(2.2, 3.2);
+        }
       }
     }
-    // the horde gnaws it down; bite & spit are handled where those resolve
+
+    // shared: the horde gnaws it down; bite & spit handled where those resolve
     let attackers = 0;
     for (const h of humans) { if (h.state==="zombie" && dist2(h.x,h.y,b.x,b.y) < (h.r+b.r+4)*(h.r+b.r+4)) attackers++; }
     if (attackers > 0) { b.hp -= attackers * dt * 4.5; if (Math.random()<0.2) blood(b.x,b.y); }
     if (b.hp <= 0) {
       for (let i=0;i<44;i++) burst(b.x, b.y, "#6dff5b");
-      ring(b.x, b.y, 140, "#6dff5b"); state.shake = 22;
+      ring(b.x, b.y, 140, "#6dff5b"); state.shake = 22; state.hitStop = 0.09;
       state.flashColor = "#6dff5b"; state.flashAlpha = 0.5;
-      state.dna += 18 + state.level*2; state.bossReward = true; state.boss = null;
+      state.dna += 18 + state.level*2; state.bossReward = true;
       AudioFX.levelup();
-      toast("⚙ BEHEMOTH DOWN! Evolve your strain");
+      toast((b.kind === "purifier" ? "☣ VECTOR CONTROL DOWN!" : "⚙ BEHEMOTH DOWN!") + " Evolve your strain");
+      state.boss = null;
     }
   }
 
@@ -871,6 +926,8 @@
     state.totalInfected++;
     state.threat = clamp(state.threat + 0.5, 0, 100); // each turn raises heat
     // infection chain: keep the outbreak rolling for biomass payouts
+    if (Math.random() < 0.5) decal(h.x + rand(-4,4), h.y + rand(-4,4), rand(3,6), "#1f5a16"); // infection stain
+    if (state.mods.lifesteal) player.hp = clamp(player.hp + state.mods.lifesteal * 0.35, 0, state.maxHp); // Vampiric Bite
     state.combo++; state.comboT = 2.2;
     if (state.combo % 15 === 0) {
       state.dna += 3;
@@ -910,6 +967,12 @@
       const a = rand(0, TAU), s = rand(30, 120);
       particles.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life: rand(0.3,0.6), max: 0.6, r: rand(2,3), color: "#ff3b4e" });
     }
+    if (Math.random() < 0.5) decal(x + rand(-4,4), y + rand(-4,4), rand(3,6), "#5e0f17");
+  }
+  // Persistent gore/ichor stain on the ground (capped so it never piles up).
+  function decal(x, y, r, c) {
+    decals.push({ x, y, r, a: 0.55, c: c || "#5e0f17" });
+    if (decals.length > 130) decals.shift();
   }
 
   // ============================================================ UPDATE
@@ -959,6 +1022,7 @@
     let zombieCount = 1;
     for (const h of humans) if (h.state === "zombie") zombieCount++;
     const infectFrac = zombieCount / state.population;
+    state.infFrac = infectFrac;
 
     if (zombieCount > state.peakHorde) state.peakHorde = zombieCount;
     // horde-size milestones (Katamari-style scale validation, once per run)
@@ -1321,6 +1385,10 @@
     }
     clouds = clouds.filter(c => c.life > 0);
 
+    // ---- gore decals slowly soak away
+    for (const d of decals) d.a -= dt * 0.035;
+    decals = decals.filter(d => d.a > 0);
+
     // ---- particles
     for (const pa of particles) {
       pa.x += pa.vx*dt; pa.y += pa.vy*dt; pa.life -= dt;
@@ -1360,8 +1428,10 @@
     ctx.save();
     ctx.translate(-cam.x + sx, -cam.y + sy);
 
-    // ground
-    ctx.fillStyle = "#0b1410";
+    // ground — soaks redder as the city falls
+    const inf = state.infFrac || 0;
+    const gr = Math.round(11 + inf*22), gg = Math.round(20 - inf*12), gb = Math.round(16 - inf*9);
+    ctx.fillStyle = `rgb(${gr},${gg},${gb})`;
     ctx.fillRect(cam.x-sx, cam.y-sy, W, H);
 
     // road grid
@@ -1387,6 +1457,15 @@
       ctx.strokeStyle = "rgba(120,160,120,0.18)";
       ctx.lineWidth = 2; ctx.stroke();
     }
+
+    // gore decals on the ground (under everything)
+    for (const d of decals) {
+      if (d.x < cam.x-20 || d.x > cam.x+W+20 || d.y < cam.y-20 || d.y > cam.y+H+20) continue;
+      ctx.globalAlpha = d.a;
+      ctx.fillStyle = d.c;
+      ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, TAU); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
 
     // pickups
     for (const p of pickups) {
@@ -1452,7 +1531,11 @@
       drawSoldier(so);
     }
 
-    // bullets
+    // bullets (with a short tracer streak)
+    ctx.strokeStyle = "rgba(255,224,138,0.5)"; ctx.lineWidth = 2;
+    for (const b of bullets) {
+      ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - b.vx*0.025, b.y - b.vy*0.025); ctx.stroke();
+    }
     ctx.fillStyle = "#ffe08a";
     for (const b of bullets) {
       ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fill();
@@ -1501,7 +1584,7 @@
       ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(x0-2, y0-2, w+4, 16);
       ctx.fillStyle = "#ff3b4e"; ctx.fillRect(x0, y0, w*clamp(b.hp/b.maxHp,0,1), 12);
       ctx.fillStyle = "#fff"; ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
-      ctx.fillText("THE BEHEMOTH", W/2, y0 - 5);
+      ctx.fillText(b.kind === "purifier" ? "VECTOR CONTROL" : "THE BEHEMOTH", W/2, y0 - 5);
     }
 
     // on-screen touch controls (mobile): left joystick + right aim ring
@@ -1654,27 +1737,28 @@
   }
 
   function drawBoss(b) {
-    // shockwave stomp telegraph (world space, under the body)
+    const pur = b.kind === "purifier";
+    // attack telegraph (world space, under the body)
     if (b.tele > 0) {
-      const R = 150 + b.tier*22, p = 1 - b.tele/1.0;
-      ctx.fillStyle = `rgba(255,80,60,${0.10 + 0.25*p})`;
+      const R = (pur ? 170 + b.tier*18 : 150 + b.tier*22), p = 1 - b.tele/1.0;
+      ctx.fillStyle = pur ? `rgba(90,200,255,${0.08 + 0.22*p})` : `rgba(255,80,60,${0.10 + 0.25*p})`;
       ctx.beginPath(); ctx.arc(b.x, b.y, R, 0, TAU); ctx.fill();
-      ctx.strokeStyle = "rgba(255,59,78,0.9)"; ctx.lineWidth = 4;
+      ctx.strokeStyle = pur ? "rgba(91,214,255,0.9)" : "rgba(255,59,78,0.9)"; ctx.lineWidth = 4;
       ctx.beginPath(); ctx.arc(b.x, b.y, R*(1.4 - 0.4*p), 0, TAU); ctx.stroke();
     }
     ctx.save();
     ctx.translate(b.x, b.y);
-    ctx.shadowColor = "rgba(255,59,78,0.55)"; ctx.shadowBlur = 16;
-    ctx.fillStyle = "#3a161d"; ctx.strokeStyle = "#160a0d"; ctx.lineWidth = 5;
+    ctx.shadowColor = pur ? "rgba(91,214,255,0.55)" : "rgba(255,59,78,0.55)"; ctx.shadowBlur = 16;
+    ctx.fillStyle = pur ? "#163b45" : "#3a161d"; ctx.strokeStyle = pur ? "#0a1c20" : "#160a0d"; ctx.lineWidth = 5;
     ctx.beginPath(); ctx.ellipse(0, 4, b.r*0.95, b.r*1.1, 0, 0, TAU); ctx.fill(); ctx.stroke();
     ctx.shadowBlur = 0;
-    ctx.fillStyle = "#5a2630";
+    ctx.fillStyle = pur ? "#2a6b78" : "#5a2630";
     ctx.beginPath(); ctx.arc(0, -b.r*0.5, b.r*0.5, 0, TAU); ctx.fill();
     const dmg = 1 - b.hp/b.maxHp;
     if (dmg > 0) { ctx.globalAlpha = dmg*0.5; ctx.fillStyle = "#6dff5b"; ctx.beginPath(); ctx.arc(0,0,b.r,0,TAU); ctx.fill(); ctx.globalAlpha = 1; }
-    ctx.fillStyle = "#ff3b4e"; ctx.fillRect(-7,-b.r*0.6,5,5); ctx.fillRect(2,-b.r*0.6,5,5);
-    ctx.rotate(b.aim); ctx.fillStyle = "#16160f"; ctx.fillRect(0,-5,b.r+16,10);
-    if (b.muzzle > 0) { ctx.fillStyle = "#ffe08a"; ctx.beginPath(); ctx.arc(b.r+18,0,8,0,TAU); ctx.fill(); }
+    ctx.fillStyle = pur ? "#7fe8ff" : "#ff3b4e"; ctx.fillRect(-7,-b.r*0.6,5,5); ctx.fillRect(2,-b.r*0.6,5,5);
+    if (!pur) { ctx.rotate(b.aim); ctx.fillStyle = "#16160f"; ctx.fillRect(0,-5,b.r+16,10);
+      if (b.muzzle > 0) { ctx.fillStyle = "#ffe08a"; ctx.beginPath(); ctx.arc(b.r+18,0,8,0,TAU); ctx.fill(); } }
     ctx.restore();
   }
 
@@ -1922,7 +2006,9 @@
     last = now;
     dt = Math.min(dt, 0.05); // clamp to avoid tunneling on lag
 
-    if (state.phase === "play") update(dt);
+    // brief hit-stop freezes the action for extra impact on big hits
+    if (state.hitStop > 0) { state.hitStop -= dt; }
+    else if (state.phase === "play") update(dt);
 
     // toast fade
     if (toastT > 0) { toastT -= dt; if (toastT <= 0) el("toast").classList.remove("show"); }
