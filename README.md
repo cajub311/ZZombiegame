@@ -10,6 +10,16 @@
 
 Or open **`index.html`** locally in any modern browser — that's it. Works on desktop and mobile.
 
+## 📱 Install on Android (as an app)
+
+This is an installable **PWA** — it adds to your home screen as a real full-screen, offline app:
+
+1. Open **https://cajub311.github.io/ZZombiegame/** in **Chrome** on your phone.
+2. Tap the **⋮ menu → "Install app"** (or "Add to Home screen").
+3. Launch it from your home screen — own icon, full-screen, plays offline.
+
+Controls on phone: **left half of the screen = move, right half = aim & bite.**
+
 ## 🎮 Controls
 
 | Input | Action |

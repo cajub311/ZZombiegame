@@ -2,9 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>PATIENT ZERO — Infect the City</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%9F%3C/text%3E%3C/svg%3E" />
+<!-- PWA / installable Android app -->
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#05080a" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Patient Zero" />
+<link rel="apple-touch-icon" href="icon-192.png" />
 <style>
   :root {
     --inf: #6dff5b;        /* infection green */
@@ -617,7 +625,7 @@
     // Boss levels (every 5th) have only a few civilians — just enough to keep
     // rebuilding a small horde while you use your skills to bring the boss down.
     const boss = (L % 5 === 0);
-    const N = boss ? (22 + Math.floor(L/5) * 4) : (55 + L * 20);
+    const N = boss ? (22 + Math.floor(L/5) * 4) : Math.min(240, 55 + L * 20); // capped for phone perf
     state.population = N + 1;          // + player
     for (let i = 0; i < N; i++) {
       let x, y, tries = 0;
@@ -1386,6 +1394,21 @@
       ctx.fillText("THE BEHEMOTH", W/2, y0 - 5);
     }
 
+    // on-screen touch controls (mobile): left joystick + right aim ring
+    if (moveT.active) {
+      ctx.strokeStyle = "rgba(255,255,255,0.22)"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(moveT.sx, moveT.sy, 46, 0, TAU); ctx.stroke();
+      const dx = moveT.x-moveT.sx, dy = moveT.y-moveT.sy, d = Math.hypot(dx,dy)||1, k = Math.min(46,d);
+      ctx.fillStyle = "rgba(109,255,91,0.5)";
+      ctx.beginPath(); ctx.arc(moveT.sx+dx/d*k, moveT.sy+dy/d*k, 22, 0, TAU); ctx.fill();
+    }
+    if (aimT.active) {
+      ctx.strokeStyle = "rgba(255,59,78,0.5)"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(aimT.x, aimT.y, 28, 0, TAU); ctx.stroke();
+      ctx.fillStyle = "rgba(255,59,78,0.25)";
+      ctx.beginPath(); ctx.arc(aimT.x, aimT.y, 12, 0, TAU); ctx.fill();
+    }
+
     drawMinimap();
   }
 
@@ -1785,6 +1808,12 @@
   requestAnimationFrame(frame);
 
 })();
+</script>
+<script>
+  // Service worker = offline play + installable as an Android/desktop app
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+  }
 </script>
 </body>
 </html>
