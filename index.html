@@ -724,6 +724,7 @@
         const bw = cell - rand(70,120);
         const bh = cell - rand(70,120);
         const w = Math.max(60,bw), h = Math.max(60,bh);
+        if (dist2(bx + w/2, by + h/2, WORLD.w/2, WORLD.h/2) < 210*210) continue;
         const hp = Math.round(clamp(28 + (w*h) / 2400, 50, 95));
         const cap = Math.min(5, 2 + Math.floor((w*h) / 22000));
         blocks.push({ x: bx, y: by, w, h, cx:bx+w/2, cy:by+h/2, r:Math.max(42, Math.min(w,h)*0.42), shade: rand(0.04,0.12), hp, maxHp:hp, cap, occupants:[], breached:false, pulse:rand(0, TAU), pressure:0 });
@@ -740,6 +741,39 @@
   function districtAt(x, y, id) {
     for (const d of districts) if ((!id || d.id === id) && dist2(x,y,d.x,d.y) < d.r*d.r) return d;
     return null;
+  }
+
+  function collideWithBlocks(e, radius) {
+    for (const b of blocks) {
+      if (b.breached) continue;
+      const nx = clamp(e.x, b.x, b.x + b.w);
+      const ny = clamp(e.y, b.y, b.y + b.h);
+      let dx = e.x - nx, dy = e.y - ny;
+      let d2 = dx*dx + dy*dy;
+      if (d2 > radius*radius) continue;
+      if (d2 < 0.0001) {
+        const left = Math.abs(e.x - b.x), right = Math.abs(b.x + b.w - e.x);
+        const top = Math.abs(e.y - b.y), bottom = Math.abs(b.y + b.h - e.y);
+        const m = Math.min(left, right, top, bottom);
+        if (m === left) { dx = -1; dy = 0; e.x = b.x - radius; }
+        else if (m === right) { dx = 1; dy = 0; e.x = b.x + b.w + radius; }
+        else if (m === top) { dx = 0; dy = -1; e.y = b.y - radius; }
+        else { dx = 0; dy = 1; e.y = b.y + b.h + radius; }
+        if (e.vx != null) e.vx *= 0.35;
+        if (e.vy != null) e.vy *= 0.35;
+      } else {
+        const d = Math.sqrt(d2), push = radius - d + 0.1;
+        e.x += (dx / d) * push;
+        e.y += (dy / d) * push;
+        if (e.vx != null && e.vy != null) {
+          const nxn = dx / d, nyn = dy / d;
+          const dot = e.vx*nxn + e.vy*nyn;
+          if (dot < 0) { e.vx -= dot*nxn; e.vy -= dot*nyn; }
+        }
+      }
+      e.x = clamp(e.x, radius, WORLD.w - radius);
+      e.y = clamp(e.y, radius, WORLD.h - radius);
+    }
   }
 
   // Fresh run: reset everything and build level 1.
@@ -927,6 +961,7 @@
         const moveDir = dl < 300 ? -1 : 0.3; // back off when crowded, else drift in
         b.x = clamp(b.x + (dx/dl)*b.speed*moveDir*dt + (-dy/dl)*40*dt, 20, WORLD.w-20);
         b.y = clamp(b.y + (dy/dl)*b.speed*moveDir*dt + (dx/dl)*40*dt, 20, WORLD.h-20);
+        collideWithBlocks(b, b.r);
       }
       const R = 170 + b.tier*18;
       if (b.tele > 0) {
@@ -954,6 +989,7 @@
       if (!b.stomping) {
         b.x = clamp(b.x + (dx/dl)*b.speed*dt, 20, WORLD.w-20);
         b.y = clamp(b.y + (dy/dl)*b.speed*dt, 20, WORLD.h-20);
+        collideWithBlocks(b, b.r);
       }
       const R = 150 + b.tier * 22;
       if (b.tele > 0) {
@@ -1250,6 +1286,7 @@
       player.lungeT -= dt;
       player.x = clamp(player.x + Math.cos(player.lungeA)*player.lungeSpeed*dt, 14, WORLD.w-14);
       player.y = clamp(player.y + Math.sin(player.lungeA)*player.lungeSpeed*dt, 14, WORLD.h-14);
+      collideWithBlocks(player, player.r);
     } else {
       let mx = 0, my = 0;
       if (keys["w"] || keys["arrowup"]) my -= 1;
@@ -1266,6 +1303,7 @@
       player.vy = (my/ml) * speed;
       player.x = clamp(player.x + player.vx*dt, 14, WORLD.w-14);
       player.y = clamp(player.y + player.vy*dt, 14, WORLD.h-14);
+      collideWithBlocks(player, player.r);
     }
     // hold to keep biting (mouse held on desktop, aim-touch on mobile); cd gates it
     if (mouse.down || aimT.active) useAbility(0);
@@ -1418,6 +1456,7 @@
         h.vx = (dx/dl) * zs; h.vy = (dy/dl) * zs;
         h.x = clamp(h.x + h.vx*dt, 10, WORLD.w-10);
         h.y = clamp(h.y + h.vy*dt, 10, WORLD.h-10);
+        collideWithBlocks(h, h.r);
         h.anim += dt * 8;
         // infect on contact
         if (best && bd < (h.r + best.r + 1)*(h.r + best.r + 1)) startTurn(best);
@@ -1516,6 +1555,7 @@
       const dx = tx-rv.x, dy = ty-rv.y, dl = Math.hypot(dx,dy)||1;
       rv.x = clamp(rv.x + (dx/dl)*150*dt, 10, WORLD.w-10);
       rv.y = clamp(rv.y + (dy/dl)*150*dt, 10, WORLD.h-10);
+      collideWithBlocks(rv, rv.r);
       // steal a human -> turns into a rival (cap the rival population)
       if (prey && !prey.dead && rivals.length < 50 && pd < (rv.r+prey.r+1)*(rv.r+prey.r+1)) {
         prey.dead = true; prey.state = "dead"; spawnRival(prey.x, prey.y); burst(prey.x, prey.y, "#b96bff");
@@ -1567,6 +1607,7 @@
       // advance/retreat plus a little strafe
       so.x = clamp(so.x + (dx/dl)*so.speed*move*dt + (-dy/dl)*22*dt, 10, WORLD.w-10);
       so.y = clamp(so.y + (dy/dl)*so.speed*move*dt + (dx/dl)*22*dt, 10, WORLD.h-10);
+      collideWithBlocks(so, so.r);
       so.aim = Math.atan2(ady, adx);
       if (so.muzzle > 0) so.muzzle -= dt;
       so.cool -= dt;

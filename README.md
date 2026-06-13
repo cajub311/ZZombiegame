@@ -36,6 +36,7 @@ Controls on phone: **left half of the screen = move, right half = aim & bite.**
 - **Clear a level, then EVOLVE.** Each cleared city lets you draft one of three **mutations** (unlock new powers or stack passives like Sharper Fangs, Pack Hunger, Thick Hide, Viral Vigor). Every level the city grows and the military hits harder — it's endless.
 - **Named city districts.** Malls, hospitals, police stations, and subway hubs now create local objectives: overrun them for bonuses, shut down decon pressure, drop heat, or stop civilians from escaping.
 - **Breakable shelters.** Panicked civilians cluster around and hide inside buildings. Swarm the occupied blocks until they crack open, exposing everyone inside to the outbreak.
+- **Solid city blocks.** Patient Zero and the horde have to move around buildings; only civilians can duck inside shelters.
 - **Responder guards.** Once shelters fill up, soldiers deploy around them and try to hold the horde off long enough for civilians to survive or escape.
 - **Mutation evolutions.** Certain draft combinations become named strain upgrades like **Feral Pack**, **Plague Bomb**, **Juggernaut Strain**, **Contamination Zone**, and **Alpha Bite**.
 - **Smarter horde upgrades.** Draft powers like **Pack Mind**, **Siege Claws**, and **Jumper Strain** make the horde coordinate with your attacks, crack shelters faster, and leap into prey.
