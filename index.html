@@ -931,14 +931,19 @@
     const baseHp = Math.round(clamp(58 + (w*h) / 1200, 120, 220) * shelterScale);
     const hp = baseHp + 12; // every building starts with one barricade layer of its own
     const cap = Math.min(34, 18 + Math.floor((w*h) / 6500));
+    // The solid/attackable circle now matches the building you actually see,
+    // instead of a giant invisible ring that held you out of reach.
+    const rad = Math.round((w + h) / 4);
     const b = {
-      id, name, role, color, x:cx-w/2, y:cy-h/2, w, h, cx, cy,
-      r, outerR:r + 115,
+      id, name, role, color, cx, cy,
+      r: rad, w: rad*2, h: rad*2, x: cx - rad, y: cy - rad,
+      outerR: rad + 90,
       shade:0.12, baseHp, hp, maxHp:hp, cap, occupants:[], breached:false, pulse:rand(0, TAU),
       pressure:0, reinforced:1, barricadeMax:5, barricadeT:0, rebuildT:0, rebuilds:0,
     };
     blocks.push(b);
-    districts.push({ id, name, role, color, x:cx, y:cy, r, block:b, secured:false, warned:false, pulse:rand(0, TAU) });
+    // district zone (crowd spawns / capture) stays a wider, walkable ring
+    districts.push({ id, name, role, color, x:cx, y:cy, r: rad + 70, block:b, secured:false, warned:false, pulse:rand(0, TAU) });
   }
   function districtAt(x, y, id) {
     for (const d of districts) if ((!id || d.id === id) && dist2(x,y,d.x,d.y) < d.r*d.r) return d;
@@ -1556,13 +1561,20 @@
     return convertedOrRemoved / civTotal >= clearFractionForLevel();
   }
   function updateObjectives(zombieCount, remaining) {
+    if (state.isBoss && state.boss) {
+      state.objectiveText = `KILL ${state.boss.name.toUpperCase()} · BUILD A HORDE TO SWARM IT`;
+      const o = el("objective");
+      if (state.phase === "play") { o.textContent = state.objectiveText; o.classList.remove("hidden"); }
+      else o.classList.add("hidden");
+      return;
+    }
     const lines = [
       { done:zombieCount >= 6, text:`BITE TO START A CHAIN (${Math.min(zombieCount,6)}/6)` },
       { done:state.sheltersBreached >= 1, text:"SWARM AN OCCUPIED BUILDING" },
       { done:state.districtCaptures >= 1, text:"OVERRUN A NAMED DISTRICT" },
       { done:treePoints("patient") + treePoints("horde") > 0, text:"CLEAR THE LEVEL AND SPEND A SKILL POINT" },
       { done:Object.keys(state.evos).length > 0, text:"COMBINE MUTATIONS TO EVOLVE YOUR STRAIN" },
-      { done:state.isBoss ? !!state.bossSpawned && !state.boss : earlyMomentumReached(zombieCount) || levelTakeoverReached(remaining) || allBuildingsConquered(), text:state.isBoss && state.boss ? `KILL ${state.boss.name.toUpperCase()}` : (state.level <= 4 ? `BUILD A HORDE (${Math.min(zombieCount, earlyHordeTarget())}/${earlyHordeTarget()})` : `TAKE ${Math.round(clearFractionForLevel()*100)}% OR ALL BUILDINGS`) },
+      { done:earlyMomentumReached(zombieCount) || levelTakeoverReached(remaining) || allBuildingsConquered(), text:state.level <= 4 ? `BUILD A HORDE (${Math.min(zombieCount, earlyHordeTarget())}/${earlyHordeTarget()})` : `TAKE ${Math.round(clearFractionForLevel()*100)}% OR ALL BUILDINGS` },
     ];
     const active = lines.find(x => !x.done);
     const extra = state.escaped ? ` · ${state.escaped} ESCAPED` : "";
@@ -2212,24 +2224,31 @@
       b.pulse += 0.016;
       const occ = b.occupants.length;
       const dmg = 1 - clamp(b.hp / b.maxHp, 0, 1);
-      ctx.fillStyle = b.breached ? "rgba(55,45,38,0.34)" : `rgba(${occ ? 255 : 220},${occ ? 235 : 255},${occ ? 160 : 255},${b.shade + occ*0.018 + b.reinforced*0.018})`;
-      roundRect(b.x, b.y, b.w, b.h, 8); ctx.fill();
-      ctx.strokeStyle = b.breached ? "rgba(255,59,78,0.28)" : (occ ? "rgba(255,203,59,0.55)" : "rgba(120,160,120,0.18)");
-      ctx.lineWidth = 2 + b.reinforced*0.45; ctx.stroke();
+      // solid body is a CIRCLE — exactly where you collide and where bites land
+      ctx.beginPath(); ctx.arc(b.cx, b.cy, b.r, 0, TAU);
+      ctx.fillStyle = b.breached ? "rgba(55,45,38,0.34)" : `rgba(${occ ? 235 : 205},${occ ? 225 : 230},${occ ? 165 : 225},${0.46 + occ*0.02 + b.reinforced*0.02})`;
+      ctx.fill();
+      // the barrier ring: this is the health bar of the wall — it reddens as
+      // you damage it, so you can SEE the circle taking hits
+      if (!b.breached) {
+        const integ = clamp(b.hp / b.maxHp, 0, 1);
+        ctx.lineWidth = 4 + b.reinforced * 0.8;
+        ctx.strokeStyle = `rgba(${Math.round(255 - integ*150)},${Math.round(90 + integ*165)},${Math.round(70)},0.92)`;
+        ctx.beginPath(); ctx.arc(b.cx, b.cy, b.r, 0, TAU); ctx.stroke();
+        for (let k = 0; k < b.reinforced; k++) {
+          ctx.lineWidth = 2; ctx.strokeStyle = "rgba(255,203,59,0.35)";
+          ctx.beginPath(); ctx.arc(b.cx, b.cy, b.r - 6 - k*5, 0, TAU); ctx.stroke();
+        }
+      } else {
+        ctx.lineWidth = 3; ctx.strokeStyle = "rgba(255,59,78,0.4)"; ctx.setLineDash([6, 9]);
+        ctx.beginPath(); ctx.arc(b.cx, b.cy, b.r, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
+      }
       // white flash when a bite/spit slams the barrier
       if (b.hitFlash) {
         ctx.globalAlpha = b.hitFlash * 1.6;
         ctx.fillStyle = "#fff";
-        roundRect(b.x, b.y, b.w, b.h, 8); ctx.fill();
+        ctx.beginPath(); ctx.arc(b.cx, b.cy, b.r, 0, TAU); ctx.fill();
         ctx.globalAlpha = 1;
-      }
-      if (b.reinforced && !b.breached) {
-        ctx.strokeStyle = "rgba(255,203,59,0.45)";
-        ctx.lineWidth = 3;
-        for (let k=0;k<b.reinforced;k++) {
-          const yy = b.y + 16 + k*13;
-          ctx.beginPath(); ctx.moveTo(b.x + 12, yy); ctx.lineTo(b.x + b.w - 12, yy + 5); ctx.stroke();
-        }
       }
       const playerNear = dist2(player.x, player.y, b.cx, b.cy) < b.outerR * b.outerR;
       if (occ || b.breached || dmg > 0.02 || playerNear) {
@@ -2258,11 +2277,12 @@
         }
       }
       if (dmg > 0.15 && !b.breached) {
-        ctx.strokeStyle = "rgba(255,59,78,0.45)"; ctx.lineWidth = 2;
-        const cracks = Math.ceil(dmg * 5);
+        ctx.strokeStyle = "rgba(255,59,78,0.5)"; ctx.lineWidth = 2;
+        const cracks = Math.ceil(dmg * 6);
         for (let c=0;c<cracks;c++) {
-          const x = b.x + b.w*(0.18 + c*0.14), y = b.y + b.h*(0.25 + (c%3)*0.18);
-          ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x+rand(-10,12), y+rand(12,28)); ctx.stroke();
+          const a = (c / cracks) * TAU + b.pulse * 0.15;
+          ctx.beginPath(); ctx.moveTo(b.cx, b.cy);
+          ctx.lineTo(b.cx + Math.cos(a)*b.r*0.92, b.cy + Math.sin(a)*b.r*0.92); ctx.stroke();
         }
       }
     }
@@ -2811,7 +2831,7 @@
     const wrap = el("draftCards");
     const b = el("rerollBtn");
     if (!state.bossReward) {
-      wrap.innerHTML = `<div style="color:#b6e6b0;font-size:12px;letter-spacing:1px;margin-top:4px;">Regular clears grant skill points. Mutations return after boss fights.</div>`;
+      wrap.innerHTML = `<div style="color:#b6e6b0;font-size:12px;letter-spacing:1px;margin-top:4px;">Spend your point to enter the next district. Mutations return after boss fights.</div>`;
       b.style.display = "none";
       updateUpgradeUI();
       return;
@@ -2853,6 +2873,8 @@
     el("abilities").classList.add("hidden");
     el("objective").classList.add("hidden");
     el("draftLvl").textContent = state.level;
+    const bossText = state.bossRewardType === "hard" ? "HARD BOSS DOWN" : (state.bossRewardType === "medium" ? "BOSS DOWN" : "LEVEL CLEARED");
+    document.querySelector("#draftScreen .subtitle").innerHTML = `${bossText} · LEVEL <span id="draftLvl">${state.level}</span>`;
     rollDraft();
     el("draftScreen").classList.remove("hidden");
   }
@@ -2865,7 +2887,7 @@
     el("hud").classList.remove("hidden");
     el("abilities").classList.remove("hidden");
     el("objective").classList.remove("hidden");
-    toast("LEVEL " + state.level + " — " + label);
+    if (!state.isBoss) toast("LEVEL " + state.level + " — " + label);
   }
 
   function pickPower(pu) {
