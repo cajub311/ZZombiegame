@@ -150,6 +150,13 @@
   .hud-center { text-align: center; }
   .hud-center .big { font-size: 26px; font-weight: 900; color: var(--inf); text-shadow: 0 0 12px rgba(109,255,91,0.4); }
   .hud-center .sub { font-size: 11px; letter-spacing: 1px; color: #8fc98a; }
+  .hud-center .chain {
+    margin-top: 6px; height: 0; overflow: hidden; opacity: 0;
+    transition: opacity 0.18s ease, height 0.18s ease, transform 0.1s ease;
+  }
+  .hud-center .chain.on { height: 26px; opacity: 1; }
+  .hud-center .chain span { display: block; font-size: 13px; font-weight: 900; letter-spacing: 1px; color: var(--warn); text-shadow: 0 0 10px rgba(255,203,59,0.6); }
+  .hud-center .chain i { display: block; height: 4px; margin: 3px auto 0; width: 92px; border-radius: 4px; background: linear-gradient(90deg, var(--warn), var(--inf)); transition: width 0.12s linear; }
 
   #abilities {
     position: fixed;
@@ -323,6 +330,7 @@
     <div style="font-size:11px; color:#ffcb3b; letter-spacing:2px; font-weight:bold;">LEVEL <span id="lvlNum">1</span></div>
     <div class="big" id="infectedCount">1</div>
     <div class="sub">HORDE · <span id="remainCount">0</span> LEFT</div>
+    <div id="chainLine" class="chain"><span id="chainText"></span><i id="chainBar"></i></div>
   </div>
 
   <div class="hud-box meter" style="text-align:right;">
@@ -480,6 +488,8 @@
       levelup(){ [523,659,784,1046].forEach((f,i)=>setTimeout(()=>blip(f,0.16,"triangle",0.22),i*90)); },
       strike(){ nz(0.7,0.6,"lowpass",260); blip(50,0.7,"sine",0.5,24); },
       horn(){ blip(330,0.5,"sawtooth",0.22,150); blip(247,0.55,"sawtooth",0.18,116); },
+      wreck(){ nz(0.22,0.4,"lowpass",380); blip(120,0.18,"square",0.18,52); },
+      rebuild(){ blip(300,0.1,"triangle",0.13,470); setTimeout(()=>blip(380,0.1,"triangle",0.12,600),90); },
     };
   })();
 
@@ -587,6 +597,7 @@
   let rivals = [];    // Night Stalkers — a rival strain {x,y,r,hp,anim}
   let decals = [];    // persistent gore on the ground {x,y,r,a,c}
   let districts = []; // named city zones that alter flow and grant capture rewards
+  let floats = [];    // rising combat text {x,y,vy,life,max,text,color,size}
   let player = null;
 
   // ============================================================ ABILITIES
@@ -719,11 +730,14 @@
       player.lungeT = 0.16; player.lungeA = ang; player.lungeSpeed = 600 * reach;
       const biteR = 34 * reach;
       const bx = player.x + Math.cos(ang)*18, by = player.y + Math.sin(ang)*18;
-      for (const h of humans) if (h.state === "human" && dist2(bx,by,h.x,h.y) < biteR*biteR) startTurn(h);
-      for (const b of blocks) if (!b.breached && b.occupants.length && dist2(bx,by,b.cx,b.cy) < (biteR+b.r)*(biteR+b.r)) damageShelter(b, 1.4 + state.mods.siege * 0.55 + state.stats.strength * 0.3 + state.mods.acid * 0.34, true);
-      for (const so of soldiers) if (dist2(bx,by,so.x,so.y) < (biteR+so.r)*(biteR+so.r)) { so.infect = (so.infect||0) + 0.5 + state.mods.acid * 0.12; blood(so.x,so.y); }
-      if (state.boss && dist2(bx,by,state.boss.x,state.boss.y) < (biteR+state.boss.r)*(biteR+state.boss.r)) { state.boss.hp -= 6 + state.stats.strength * 1.8 + state.mods.acid * 1.4; blood(state.boss.x,state.boss.y); }
-      for (const rv of rivals) if (dist2(bx,by,rv.x,rv.y) < (biteR+rv.r)*(biteR+rv.r)) { rv.hp -= 3; blood(rv.x,rv.y); }
+      let biteHit = false;
+      for (const h of humans) if (h.state === "human" && dist2(bx,by,h.x,h.y) < biteR*biteR) { startTurn(h); biteHit = true; }
+      for (const b of blocks) if (!b.breached && dist2(bx,by,b.cx,b.cy) < (biteR+b.r)*(biteR+b.r)) { damageShelter(b, 1.4 + state.mods.siege * 0.55 + state.stats.strength * 0.3 + state.mods.acid * 0.34, true); biteHit = true; }
+      for (const so of soldiers) if (dist2(bx,by,so.x,so.y) < (biteR+so.r)*(biteR+so.r)) { so.infect = (so.infect||0) + 0.5 + state.mods.acid * 0.12; blood(so.x,so.y); biteHit = true; }
+      if (state.boss && dist2(bx,by,state.boss.x,state.boss.y) < (biteR+state.boss.r)*(biteR+state.boss.r)) { state.boss.hp -= 6 + state.stats.strength * 1.8 + state.mods.acid * 1.4; blood(state.boss.x,state.boss.y); biteHit = true; }
+      for (const rv of rivals) if (dist2(bx,by,rv.x,rv.y) < (biteR+rv.r)*(biteR+rv.r)) { rv.hp -= 3; blood(rv.x,rv.y); biteHit = true; }
+      // a connecting bite kicks the screen so chomps feel like they land
+      if (biteHit) state.shake = Math.max(state.shake, 5);
       if (state.mods.spore) { // Spore Burst: bite drops an infection cloud now and then
         state.biteN = (state.biteN||0) + 1;
         if (state.biteN % Math.max(2, 4 - state.mods.spore) === 0) clouds.push({
@@ -779,13 +793,14 @@
   }
   function addDistrict(id, name, role, color, x, y, w, h, r) {
     const cx = x + rand(-35,35), cy = y + rand(-35,35);
-    const hp = Math.round(clamp(58 + (w*h) / 1200, 120, 220));
+    const baseHp = Math.round(clamp(58 + (w*h) / 1200, 120, 220));
+    const hp = baseHp + 12; // every building starts with one barricade layer of its own
     const cap = Math.min(34, 18 + Math.floor((w*h) / 6500));
     const b = {
       id, name, role, color, x:cx-w/2, y:cy-h/2, w, h, cx, cy,
       r, outerR:r + 115,
-      shade:0.12, hp, maxHp:hp, cap, occupants:[], breached:false, pulse:rand(0, TAU),
-      pressure:0, reinforced:0, barricadeMax:4, barricadeT:0,
+      shade:0.12, baseHp, hp, maxHp:hp, cap, occupants:[], breached:false, pulse:rand(0, TAU),
+      pressure:0, reinforced:1, barricadeMax:5, barricadeT:0, rebuildT:0, rebuilds:0,
     };
     blocks.push(b);
     districts.push({ id, name, role, color, x:cx, y:cy, r, block:b, secured:false, warned:false, pulse:rand(0, TAU) });
@@ -844,7 +859,7 @@
   // (Re)build the city + civilians for the current level, harder each time.
   function buildLevel() {
     const L = state.level;
-    humans = []; soldiers = []; bullets = []; spits = []; pickups = []; particles = []; clouds = []; strikes = []; rivals = []; decals = [];
+    humans = []; soldiers = []; bullets = []; spits = []; pickups = []; particles = []; clouds = []; strikes = []; rivals = []; decals = []; floats = [];
     buildCity();
 
     player.x = WORLD.w/2; player.y = WORLD.h/2 + 310; player.vx = 0; player.vy = 0;
@@ -1142,14 +1157,19 @@
     // infection chain: keep the outbreak rolling for biomass payouts
     if (Math.random() < 0.5) decal(h.x + rand(-4,4), h.y + rand(-4,4), rand(3,6), "#1f5a16"); // infection stain
     if (state.mods.lifesteal) player.hp = clamp(player.hp + state.mods.lifesteal * 0.35, 0, state.maxHp); // Vampiric Bite
-    state.combo++; state.comboT = 2.2;
+    state.combo++; state.comboT = 2.4;
     if (state.combo % 15 === 0) {
       state.dna += 3;
       toast(`⛓ ${state.combo} CHAIN!  +3 biomass`);
-      state.shake = Math.max(state.shake, 6);
+      state.shake = Math.max(state.shake, 8);
+      state.flashColor = "#ffcb3b"; state.flashAlpha = Math.max(state.flashAlpha, 0.18);
       for (let i=0;i<14;i++) burst(h.x, h.y, "#9dff7a");
+      addFloat(h.x, h.y - 14, `+3 ⛓ ${state.combo}`, "#ffcb3b", 22);
     } else {
       burst(h.x, h.y, "#6dff5b");
+      // chain grows -> bigger, hotter pop so the streak reads at a glance
+      addFloat(h.x, h.y - 12, state.combo >= 3 ? `x${state.combo}` : "+1",
+        state.combo >= 10 ? "#6dff5b" : "#9dff7a", state.combo >= 10 ? 18 : 13);
     }
     if (Math.random() < 0.12) AudioFX.turn();
   }
@@ -1200,16 +1220,20 @@
   function damageShelter(b, amount, loud) {
     if (!b || b.breached) return;
     b.pulse = 0;
-    if (loud) b.hp -= amount * 4;
+    b.rebuildT = 0; // any hit interrupts a rebuild in progress
+    if (loud) { b.hp -= amount * 4.5; b.hitFlash = 0.18; }
     else b.pressure += amount * (1 + state.mods.siege * 0.45);
     if (Math.random() < 0.25 || loud) {
-      particles.push({ x:b.cx+rand(-b.w*0.35,b.w*0.35), y:b.cy+rand(-b.h*0.35,b.h*0.35), vx:rand(-20,20), vy:rand(-20,20), life:0.35, max:0.35, r:rand(2,4), color:"#b6e6b0" });
+      // splinters of the barricade fly off toward where it was struck
+      const n = loud ? 4 : 1;
+      for (let i=0;i<n;i++) particles.push({ x:b.cx+rand(-b.w*0.4,b.w*0.4), y:b.cy+rand(-b.h*0.4,b.h*0.4), vx:rand(-55,55), vy:rand(-55,55), life:0.4, max:0.4, r:rand(2,4), color:"#caa46a" });
     }
     if (b.hp <= 0) breachShelter(b);
   }
   function updateShelterDamage(dt, frenzy) {
     for (const b of blocks) {
-      if (b.breached) continue;
+      if (b.hitFlash) b.hitFlash = Math.max(0, b.hitFlash - dt);
+      if (b.breached) { rebuildBreach(b, dt); continue; }
       const weighted = dt > 0 ? b.pressure / dt : 0;
       let builders = 0;
       for (const h of b.occupants) if (h.smart) builders++;
@@ -1237,7 +1261,8 @@
   }
   function breachShelter(b) {
     if (b.breached) return;
-    b.breached = true; b.hp = 0; state.sheltersBreached++;
+    b.breached = true; b.hp = 0; b.reinforced = 0; b.barricadeT = 0; b.rebuildT = 0;
+    state.sheltersBreached++;
     const freed = b.occupants.splice(0);
     for (const h of freed) {
       h.shelter = null; h.state = Math.random() < 0.72 ? "turning" : "human";
@@ -1246,10 +1271,51 @@
       h.turn = rand(0.45, 0.9);
       burst(h.x, h.y, "#9dff7a");
     }
+    // rubble bursts outward as the barricade caves in
+    for (let i=0;i<14;i++) particles.push({ x:b.cx+rand(-b.w*0.45,b.w*0.45), y:b.cy+rand(-b.h*0.45,b.h*0.45), vx:rand(-110,110), vy:rand(-110,110), life:rand(0.4,0.8), max:0.8, r:rand(2,5), color:"#caa46a" });
     ring(b.cx, b.cy, Math.max(b.w,b.h)*0.55, "#6dff5b");
-    state.dna += Math.min(3, Math.ceil(freed.length / 4));
-    state.threat = clamp(state.threat + freed.length * 0.25, 0, 100);
-    toast(`SHELTER BREACHED — ${freed.length} exposed`);
+    state.shake = Math.max(state.shake, 7);
+    state.dna += freed.length ? Math.min(3, Math.ceil(freed.length / 4)) : 1; // wrecking an empty barrier still pays a little
+    state.threat = clamp(state.threat + 1 + freed.length * 0.25, 0, 100);
+    AudioFX.wreck();
+    toast(freed.length ? `BARRIER DOWN — ${freed.length} exposed` : `${b.name} BARRIER WRECKED`);
+  }
+  // Survivors reclaim a collapsed building. They can only work when the coast
+  // is clear — a nearby zombie or Patient Zero stalls (and slowly undoes) it.
+  function rebuildBreach(b, dt) {
+    let crew = 0, threat = 0;
+    const outer2 = b.outerR * b.outerR, near2 = (b.r * 1.7) * (b.r * 1.7);
+    for (const h of humans) {
+      if (h.evacuated) continue;
+      const d = dist2(h.x, h.y, b.cx, b.cy);
+      if (h.state === "human" && d < outer2) crew++;
+      else if ((h.state === "zombie" || h.state === "turning") && d < near2) threat++;
+    }
+    if (dist2(player.x, player.y, b.cx, b.cy) < near2) threat += 2;
+    if (crew >= 3 && threat === 0) {
+      b.rebuildT += dt * (1 + crew * 0.22);
+      if (Math.random() < 0.5) particles.push({ x:b.cx+rand(-b.w*0.42,b.w*0.42), y:b.cy+rand(-b.h*0.42,b.h*0.42), vx:rand(-12,12), vy:rand(-34,-12), life:0.5, max:0.5, r:rand(2,3), color:"#ffcb3b" });
+      if (b.rebuildT >= 6) {
+        b.breached = false;
+        b.rebuilds = (b.rebuilds || 0) + 1;
+        b.reinforced = 1;
+        b.maxHp = b.baseHp + 12;
+        b.hp = Math.round(b.maxHp * 0.6);
+        b.rebuildT = 0; b.pressure = 0; b.pulse = 0;
+        // the crew that rebuilt it ducks back inside
+        let taken = 0;
+        for (const h of humans) {
+          if (taken >= 6) break;
+          if (h.state === "human" && dist2(h.x, h.y, b.cx, b.cy) < outer2 && enterShelter(h, b)) taken++;
+        }
+        ring(b.cx, b.cy, Math.max(b.w, b.h) * 0.5, "#ffcb3b");
+        state.threat = clamp(state.threat - 2, 0, 100);
+        AudioFX.rebuild();
+        toast(`${b.name} REBUILT — barricaded again`);
+      }
+    } else if (b.rebuildT > 0) {
+      b.rebuildT = Math.max(0, b.rebuildT - dt * 2); // progress slips when interrupted
+    }
   }
   function nearestOpenDistrict(x, y, id) {
     let best = null, bd = Infinity;
@@ -1378,6 +1444,11 @@
   function decal(x, y, r, c) {
     decals.push({ x, y, r, a: 0.55, c: c || "#5e0f17" });
     if (decals.length > 130) decals.shift();
+  }
+  // Rising combat text — the visible payoff for biting (capped for phone perf).
+  function addFloat(x, y, text, color, size) {
+    floats.push({ x, y, vy: -46, life: 0.95, max: 0.95, text, color: color || "#9dff7a", size: size || 14 });
+    if (floats.length > 40) floats.shift();
   }
 
   // ============================================================ UPDATE
@@ -1815,6 +1886,10 @@
       if (sp.life > 0) for (const rv of rivals) {
         if (dist2(sp.x,sp.y,rv.x,rv.y) < (sp.r+rv.r)*(sp.r+rv.r)) { rv.hp -= 3; sp.life = 0; blood(rv.x,rv.y); break; }
       }
+      // corrosive glob also eats barricades on a direct hit
+      if (sp.life > 0) for (const b of blocks) {
+        if (!b.breached && dist2(sp.x,sp.y,b.cx,b.cy) < (sp.r+b.r)*(sp.r+b.r)) { damageShelter(b, 0.9 + state.mods.acid * 0.4, true); sp.life = 0; break; }
+      }
     }
     spits = spits.filter(s => s.life > 0 && s.x>0 && s.y>0 && s.x<WORLD.w && s.y<WORLD.h);
 
@@ -1877,6 +1952,10 @@
       pa.vx *= 0.92; pa.vy *= 0.92;
     }
     particles = particles.filter(p => p.life > 0);
+
+    // ---- floating combat text (drifts up and fades)
+    for (const f of floats) { f.y += f.vy*dt; f.vy *= 0.9; f.life -= dt; }
+    floats = floats.filter(f => f.life > 0);
 
     // ---- ability cooldowns
     for (const a of ABILITIES) if (a.cd > 0) a.cd = Math.max(0, a.cd - dt);
@@ -1977,6 +2056,13 @@
       roundRect(b.x, b.y, b.w, b.h, 8); ctx.fill();
       ctx.strokeStyle = b.breached ? "rgba(255,59,78,0.28)" : (occ ? "rgba(255,203,59,0.55)" : "rgba(120,160,120,0.18)");
       ctx.lineWidth = 2 + b.reinforced*0.45; ctx.stroke();
+      // white flash when a bite/spit slams the barrier
+      if (b.hitFlash) {
+        ctx.globalAlpha = b.hitFlash * 1.6;
+        ctx.fillStyle = "#fff";
+        roundRect(b.x, b.y, b.w, b.h, 8); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
       if (b.reinforced && !b.breached) {
         ctx.strokeStyle = "rgba(255,203,59,0.45)";
         ctx.lineWidth = 3;
@@ -1988,9 +2074,16 @@
       if (occ || b.breached || dmg > 0.2) {
         ctx.fillStyle = "rgba(0,0,0,0.55)";
         roundRect(b.cx - 34, b.cy - 15, 68, 30, 5); ctx.fill();
-        ctx.fillStyle = b.breached ? "#ff3b4e" : "#ffcb3b";
+        const rebuilding = b.breached && b.rebuildT > 0;
+        ctx.fillStyle = rebuilding ? "#ffcb3b" : (b.breached ? "#ff3b4e" : "#ffcb3b");
         ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
-        ctx.fillText(b.breached ? "OPEN" : `HIDE ${occ}`, b.cx, b.cy - 4);
+        ctx.fillText(rebuilding ? "REBUILDING" : (b.breached ? "OPEN" : `HIDE ${occ}`), b.cx, b.cy - 4);
+        if (rebuilding) {
+          ctx.fillStyle = "rgba(255,255,255,0.14)";
+          ctx.fillRect(b.cx - 26, b.cy + 8, 52, 4);
+          ctx.fillStyle = "#ffcb3b";
+          ctx.fillRect(b.cx - 26, b.cy + 8, 52 * clamp(b.rebuildT / 6, 0, 1), 4);
+        }
         if (!b.breached && b.reinforced) {
           ctx.fillStyle = "#e8ffe5";
           ctx.font = "bold 8px sans-serif";
@@ -2117,6 +2210,20 @@
 
     // player (patient zero)
     drawPlayer();
+
+    // floating combat text (chain numbers, biomass payouts)
+    ctx.textAlign = "center";
+    for (const f of floats) {
+      if (f.x < cam.x-50 || f.x > cam.x+W+50 || f.y < cam.y-50 || f.y > cam.y+H+50) continue;
+      const a = clamp(f.life / f.max, 0, 1);
+      ctx.globalAlpha = a;
+      ctx.font = `900 ${f.size}px "Trebuchet MS", sans-serif`;
+      ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,0.7)";
+      ctx.strokeText(f.text, f.x, f.y);
+      ctx.fillStyle = f.color;
+      ctx.fillText(f.text, f.x, f.y);
+    }
+    ctx.globalAlpha = 1;
 
     ctx.restore();
 
@@ -2406,6 +2513,22 @@
     el("infectedCount").textContent = zombieCount;
     el("lvlNum").textContent = state.level;
     el("remainCount").textContent = remaining;
+
+    // live infection-chain meter: surfaces the streak + how close the next
+    // +3 biomass payout is, so mass-infecting has visible momentum.
+    const chainEl = el("chainLine");
+    if (state.combo >= 3 && state.comboT > 0) {
+      const done = state.combo % 15;
+      const toNext = 15 - done;
+      chainEl.classList.add("on");
+      el("chainText").textContent = `⛓ CHAIN x${state.combo} · +3 in ${toNext}`;
+      el("chainBar").style.width = (done / 15 * 92) + "px";
+      // a fading pop keeps the meter alive while the streak is fresh
+      const pop = clamp(state.comboT / 2.4, 0, 1);
+      chainEl.style.transform = `scale(${(1 + pop * 0.1).toFixed(3)})`;
+    } else {
+      chainEl.classList.remove("on");
+    }
     const hpFrac = clamp(player.hp / state.maxHp, 0, 1);
     el("hpBar").style.width = (hpFrac * 100) + "%";
     el("hpPct").textContent = Math.max(0, Math.round(player.hp)) + "%";
