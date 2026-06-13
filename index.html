@@ -291,6 +291,7 @@
     <div class="powerlist">
       Spit, Pandemic, Frenzy &amp; more are <span style="color:var(--inf)">unlocked as level rewards</span> —
       bite your way up first. Every <span style="color:var(--blood)">5th level is a BOSS</span> — use your skills.
+      <br><span style="color:#b96bff">🦇 Higher levels:</span> rival Night Stalkers race you for the humans.
       <br><span style="color:var(--warn)">📱 Mobile:</span> left side of screen moves, right side aims &amp; bites.
     </div>
   </div>
@@ -484,6 +485,7 @@
     flashAlpha: 0,
     mods: { fangs:0, packspeed:0, swift:0, hide:0, apex:0, runners:0, vigor:0 },
     boss: null, isBoss: false, bossSpawned: false, bossReward: false, waveTimer: 0,
+    rivalTimer: 0, rivalsAnnounced: false,
   };
 
   const cam = { x: 0, y: 0 };
@@ -497,6 +499,7 @@
   let particles = []; // {x,y,vx,vy,life,max,r,color}
   let clouds = [];    // bloater infection clouds {x,y,r,life,max}
   let strikes = [];   // martial-law airstrikes {x,y,t,r,done}
+  let rivals = [];    // Night Stalkers — a rival strain {x,y,r,hp,anim}
   let player = null;
 
   // ============================================================ ABILITIES
@@ -581,6 +584,7 @@
       for (const h of humans) if (h.state === "human" && dist2(bx,by,h.x,h.y) < biteR*biteR) startTurn(h);
       for (const so of soldiers) if (dist2(bx,by,so.x,so.y) < (biteR+so.r)*(biteR+so.r)) { so.infect = (so.infect||0) + 0.5; blood(so.x,so.y); }
       if (state.boss && dist2(bx,by,state.boss.x,state.boss.y) < (biteR+state.boss.r)*(biteR+state.boss.r)) { state.boss.hp -= 6; blood(state.boss.x,state.boss.y); }
+      for (const rv of rivals) if (dist2(bx,by,rv.x,rv.y) < (biteR+rv.r)*(biteR+rv.r)) { rv.hp -= 3; blood(rv.x,rv.y); }
       burst(bx, by, "#9dff7a"); AudioFX.bite();
       a.cd = a.max;
     } else if (i === 1) { // toxic spit
@@ -635,6 +639,7 @@
     state.maxHp = 100;
     state.dna = 0; state.totalInfected = 0; state.turnedSoldiers = 0;
     state.hordeMs = 0; state.combo = 0; state.comboT = 0; state.peakHorde = 1;
+    state.rivalsAnnounced = false;
     state.mods = { fangs:0, packspeed:0, swift:0, hide:0, apex:0, runners:0, vigor:0, trail:0, detonator:0 };
     ABILITIES.forEach((a, i) => { a.unlocked = (i === 0); a.cd = 0; });
     player = {
@@ -647,7 +652,7 @@
   // (Re)build the city + civilians for the current level, harder each time.
   function buildLevel() {
     const L = state.level;
-    humans = []; soldiers = []; bullets = []; spits = []; pickups = []; particles = []; clouds = []; strikes = [];
+    humans = []; soldiers = []; bullets = []; spits = []; pickups = []; particles = []; clouds = []; strikes = []; rivals = [];
     buildCity();
 
     player.x = WORLD.w/2; player.y = WORLD.h/2; player.vx = 0; player.vy = 0;
@@ -673,6 +678,7 @@
     state.startCount = 1; frenzyT = 0;
     state.lastLvl = null; state.hunterAnnounced = false; state.panicked = false;
     state.strikeTimer = 0; state.strikeWarned = false;
+    state.rivalTimer = 6;
     state.isBoss = boss;
     state.boss = null; state.bossSpawned = false; state.bossReward = false;
     state.waveTimer = Math.max(8, 16 - state.level * 0.5);
@@ -839,6 +845,18 @@
     else if (roll < 0.70)          { h.ztype = "walker";   h.r = 10; h.speed = 132; h.zhp = 1; }
     else                           { h.ztype = "shambler"; h.r = 11; h.speed = 92;  h.zhp = 1; }
   }
+  // Night Stalkers — a rival vampiric strain that also preys on humans.
+  function spawnRival(x, y) {
+    rivals.push({ x, y, r: 9, hp: 2.4, anim: rand(0, TAU) });
+  }
+  function spawnRivalEdge() {
+    const e = randInt(0,3);
+    if (e === 0) spawnRival(rand(0,WORLD.w), 20);
+    else if (e === 1) spawnRival(rand(0,WORLD.w), WORLD.h-20);
+    else if (e === 2) spawnRival(20, rand(0,WORLD.h));
+    else spawnRival(WORLD.w-20, rand(0,WORLD.h));
+  }
+
   // Bloater bursts into a lingering infection cloud when destroyed.
   function spawnCloud(x, y) {
     clouds.push({ x, y, r: 95, life: 1.5, max: 1.5 });
@@ -1080,6 +1098,54 @@
 
     if (state.boss) updateBoss(dt);
 
+    // ---- Night Stalkers: a rival strain that races you for the humans
+    if (state.level >= 6 && !state.isBoss) {
+      state.rivalTimer -= dt;
+      if (state.rivalTimer <= 0) {
+        state.rivalTimer = Math.max(6, 14 - state.level*0.4);
+        const n = 1 + Math.floor(state.level/6);
+        for (let k = 0; k < n; k++) if (rivals.length < 50) spawnRivalEdge();
+        if (!state.rivalsAnnounced) { state.rivalsAnnounced = true; toast("🦇 NIGHT STALKERS — a rival strain hunts your prey"); }
+      }
+    }
+    const rivCount = rivals.length; // new converts processed next frame, not this one
+    for (let i = 0; i < rivCount; i++) {
+      const rv = rivals[i];
+      rv.anim += dt*10;
+      let prey=null, pd=Infinity, foe=null, fd=Infinity;
+      for (const h of humans) {
+        if (h.dead) continue;
+        const d = dist2(rv.x,rv.y,h.x,h.y);
+        if (h.state==="human" || h.state==="turning") { if (d<pd){pd=d;prey=h;} }
+        else if (h.state==="zombie") { if (d<fd){fd=d;foe=h;} }
+      }
+      const dpl = dist2(rv.x,rv.y,player.x,player.y);
+      if (dpl < fd) { fd = dpl; foe = player; }
+      let tx, ty;
+      if (prey && pd < 600*600) { tx = prey.x; ty = prey.y; }
+      else if (foe) { tx = foe.x; ty = foe.y; }
+      else { tx = player.x; ty = player.y; }
+      const dx = tx-rv.x, dy = ty-rv.y, dl = Math.hypot(dx,dy)||1;
+      rv.x = clamp(rv.x + (dx/dl)*150*dt, 10, WORLD.w-10);
+      rv.y = clamp(rv.y + (dy/dl)*150*dt, 10, WORLD.h-10);
+      // steal a human -> turns into a rival (cap the rival population)
+      if (prey && !prey.dead && rivals.length < 50 && pd < (rv.r+prey.r+1)*(rv.r+prey.r+1)) {
+        prey.dead = true; prey.state = "dead"; spawnRival(prey.x, prey.y); burst(prey.x, prey.y, "#b96bff");
+      }
+      // brawl with a zombie (both take damage)
+      if (foe && foe !== player && fd < (rv.r+foe.r+1)*(rv.r+foe.r+1)) {
+        foe.zhp = (foe.zhp||1) - dt*2.2;
+        if (foe.zhp <= 0) { foe.dead = true; state.startCount = Math.max(1, state.startCount-1); }
+        rv.hp -= dt*2.6;
+      }
+      // claw the player
+      if (dpl < (rv.r+player.r+2)*(rv.r+player.r+2)) {
+        player.hp -= dt*8 * (1 - Math.min(0.6, state.mods.hide*0.22));
+        if (player.hp <= 0) return endGame();
+      }
+    }
+    rivals = rivals.filter(rv => rv.hp > 0);
+
     for (const so of soldiers) {
       // hunters lock onto the player; grunts pick the nearest zombie or player
       let tx, ty;
@@ -1176,6 +1242,10 @@
           }
         }
       }
+      // bullets also tear into rival stalkers (military fires on everything)
+      if (b.life > 0) for (const rv of rivals) {
+        if (dist2(b.x,b.y,rv.x,rv.y) < (b.r+rv.r)*(b.r+rv.r)) { b.life = 0; rv.hp -= 2; blood(rv.x,rv.y); break; }
+      }
     }
     bullets = bullets.filter(b => b.life > 0 && b.x>-20 && b.y>-20 && b.x<WORLD.w+20 && b.y<WORLD.h+20);
 
@@ -1195,6 +1265,9 @@
       }
       if (sp.life > 0 && state.boss && dist2(sp.x,sp.y,state.boss.x,state.boss.y) < (sp.r+state.boss.r)*(sp.r+state.boss.r)) {
         state.boss.hp -= 5; sp.life = 0; blood(state.boss.x, state.boss.y);
+      }
+      if (sp.life > 0) for (const rv of rivals) {
+        if (dist2(sp.x,sp.y,rv.x,rv.y) < (sp.r+rv.r)*(sp.r+rv.r)) { rv.hp -= 3; sp.life = 0; blood(rv.x,rv.y); break; }
       }
     }
     spits = spits.filter(s => s.life > 0 && s.x>0 && s.y>0 && s.x<WORLD.w && s.y<WORLD.h);
@@ -1394,6 +1467,12 @@
       ctx.restore();
     }
 
+    // rival stalkers
+    for (const rv of rivals) {
+      if (rv.x < cam.x-30 || rv.x > cam.x+W+30 || rv.y < cam.y-30 || rv.y > cam.y+H+30) continue;
+      drawRival(rv);
+    }
+
     // boss
     if (state.boss) drawBoss(state.boss);
 
@@ -1464,6 +1543,9 @@
       ctx.fillStyle = so.type === "hunter" ? "#ff3b4e" : "#b14655";
       ctx.fillRect(mmX + so.x*sx - 1, mmY + so.y*sy - 1, 2, 2);
     }
+    // rival stalkers
+    ctx.fillStyle = "#b96bff";
+    for (const rv of rivals) ctx.fillRect(mmX + rv.x*sx - 0.5, mmY + rv.y*sy - 0.5, 1.6, 1.6);
     // boss
     if (state.boss) { ctx.fillStyle = "#ff3b4e"; ctx.fillRect(mmX + state.boss.x*sx - 2.5, mmY + state.boss.y*sy - 2.5, 5, 5); }
     // player
@@ -1552,6 +1634,22 @@
       ctx.fillStyle = hunter ? "#ff6a4e" : "#ffe08a";
       ctx.beginPath(); ctx.arc(so.r+10, 0, 5, 0, TAU); ctx.fill();
     }
+    ctx.restore();
+  }
+
+  function drawRival(rv) {
+    ctx.save();
+    ctx.translate(rv.x, rv.y);
+    const wob = Math.sin(rv.anim) * 2.5;
+    ctx.shadowColor = "rgba(170,80,255,0.6)"; ctx.shadowBlur = 8;
+    ctx.fillStyle = "#6b2fae";
+    ctx.beginPath(); ctx.ellipse(wob*0.2, 2, rv.r*0.8, rv.r*1.1, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = "#b96bff";
+    ctx.beginPath(); ctx.arc(wob*0.4, -rv.r*0.6, rv.r*0.5, 0, TAU); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "#ff3b4e";
+    ctx.fillRect(wob*0.4 - 3, -rv.r*0.78, 2, 2);
+    ctx.fillRect(wob*0.4 + 1, -rv.r*0.78, 2, 2);
     ctx.restore();
   }
 
