@@ -225,6 +225,17 @@
     transition: background 0.12s ease, transform 0.08s ease;
   }
   #rerollBtn:hover { background: rgba(22,44,22,0.95); transform: translateY(-2px); }
+
+  /* ---------- Touch / mobile sizing: bigger thumb targets ---------- */
+  @media (pointer: coarse) {
+    #abilities { gap: 2.2vw; bottom: 14px; }
+    .ability { width: min(74px, 16.5vw); height: min(74px, 16.5vw); }
+    .ability .icon { font-size: min(32px, 7.4vw); }
+    .ability .key { font-size: 10px; }
+    .ability .name { font-size: 8px; }
+    .hud-center .big { font-size: 26px; }
+    #hud { font-size: 13px; }
+  }
 </style>
 </head>
 <body>
@@ -420,7 +431,7 @@
 
   // Dual-zone touch: left half = move joystick, right half = aim + auto-bite.
   const moveT = { id:null, sx:0, sy:0, x:0, y:0, active:false };
-  const aimT  = { id:null, x:0, y:0, active:false };
+  const aimT  = { id:null, asx:0, asy:0, x:0, y:0, active:false };
   canvas.addEventListener("touchstart", onTouchStart, {passive:false});
   canvas.addEventListener("touchmove", onTouchMove, {passive:false});
   canvas.addEventListener("touchend", onTouchEnd, {passive:false});
@@ -432,7 +443,8 @@
       if (t.clientX < W/2 && !moveT.active) {
         moveT.active=true; moveT.id=t.identifier; moveT.sx=moveT.x=t.clientX; moveT.sy=moveT.y=t.clientY;
       } else {
-        aimT.active=true; aimT.id=t.identifier; aimT.x=t.clientX; aimT.y=t.clientY;
+        aimT.active=true; aimT.id=t.identifier;
+        aimT.asx=aimT.x=t.clientX; aimT.asy=aimT.y=t.clientY;
       }
     }
   }
@@ -532,9 +544,28 @@
 
   let frenzyT = 0; // horde buff timer
 
-  const aimAngle = () => aimT.active
-    ? Math.atan2(aimT.y - (player.y - cam.y), aimT.x - (player.x - cam.x))
-    : Math.atan2(mouse.y - (player.y - cam.y), mouse.x - (player.x - cam.x));
+  // Nearest thing worth biting, for tap-to-aim on touch.
+  function nearestPrey() {
+    let best = null, bd = Infinity;
+    for (const h of humans) {
+      if (h.state !== "human" && h.state !== "turning") continue;
+      const d = dist2(h.x,h.y,player.x,player.y); if (d < bd) { bd = d; best = h; }
+    }
+    if (!best && state.boss) best = state.boss;
+    if (!best) for (const s of soldiers) { const d = dist2(s.x,s.y,player.x,player.y); if (d < bd) { bd = d; best = s; } }
+    return best;
+  }
+  const aimAngle = () => {
+    if (aimT.active) {
+      // twin-stick: the drag vector aims; a tiny drag (a tap) auto-aims nearest prey
+      const dx = aimT.x - aimT.asx, dy = aimT.y - aimT.asy;
+      if (dx*dx + dy*dy > 14*14) return Math.atan2(dy, dx);
+      const t = nearestPrey();
+      if (t) return Math.atan2(t.y - player.y, t.x - player.x);
+      return Math.atan2(dy, dx);
+    }
+    return Math.atan2(mouse.y - (player.y - cam.y), mouse.x - (player.x - cam.x));
+  };
 
   function useAbility(i) {
     const a = ABILITIES[i];
@@ -1403,10 +1434,11 @@
       ctx.beginPath(); ctx.arc(moveT.sx+dx/d*k, moveT.sy+dy/d*k, 22, 0, TAU); ctx.fill();
     }
     if (aimT.active) {
-      ctx.strokeStyle = "rgba(255,59,78,0.5)"; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(aimT.x, aimT.y, 28, 0, TAU); ctx.stroke();
-      ctx.fillStyle = "rgba(255,59,78,0.25)";
-      ctx.beginPath(); ctx.arc(aimT.x, aimT.y, 12, 0, TAU); ctx.fill();
+      ctx.strokeStyle = "rgba(255,90,80,0.3)"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(aimT.asx, aimT.asy, 46, 0, TAU); ctx.stroke();
+      const dx = aimT.x-aimT.asx, dy = aimT.y-aimT.asy, d = Math.hypot(dx,dy)||1, k = Math.min(46,d);
+      ctx.fillStyle = "rgba(255,90,80,0.55)";
+      ctx.beginPath(); ctx.arc(aimT.asx+dx/d*k, aimT.asy+dy/d*k, 22, 0, TAU); ctx.fill();
     }
 
     drawMinimap();
@@ -1414,7 +1446,7 @@
 
   function drawMinimap() {
     const pad = 12;
-    const mmW = 140, mmH = mmW * (WORLD.h / WORLD.w);
+    const mmW = Math.min(140, W * 0.3), mmH = mmW * (WORLD.h / WORLD.w);
     const mmX = pad, mmY = H - mmH - pad;
     const sx = mmW / WORLD.w, sy = mmH / WORLD.h;
     ctx.save();
