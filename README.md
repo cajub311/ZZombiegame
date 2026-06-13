@@ -4,9 +4,11 @@
 
 > Single self-contained HTML file. No build step, no dependencies, no assets — every sound is synthesized live in the browser. Works offline.
 
-## ▶️ Play
+## ▶️ Play now
 
-Open **`patient-zero.html`** in any modern browser. That's it.
+**[👉 Play in your browser](https://cajub311.github.io/ZZombiegame/patient-zero.html)**
+
+Or open **`patient-zero.html`** locally in any modern browser — that's it.
 
 ## 🎮 Controls
 
