@@ -712,31 +712,26 @@
   }
 
   // ============================================================ SPAWN / RESET
-  // city block layout for visuals + soft collision feel
+  // Four landmark shelters: these are the only solid buildings.
   let blocks = [];
   function buildCity() {
     blocks = []; districts = [];
-    const grid = 5, margin = 90, cell = (WORLD.w - margin*2) / grid;
-    for (let i = 0; i < grid; i++) {
-      for (let j = 0; j < grid; j++) {
-        const bx = margin + i*cell + rand(20,40);
-        const by = margin + j*cell + rand(20,40);
-        const bw = cell - rand(70,120);
-        const bh = cell - rand(70,120);
-        const w = Math.max(60,bw), h = Math.max(60,bh);
-        if (dist2(bx + w/2, by + h/2, WORLD.w/2, WORLD.h/2) < 210*210) continue;
-        const hp = Math.round(clamp(28 + (w*h) / 2400, 50, 95));
-        const cap = Math.min(5, 2 + Math.floor((w*h) / 22000));
-        blocks.push({ x: bx, y: by, w, h, cx:bx+w/2, cy:by+h/2, r:Math.max(42, Math.min(w,h)*0.42), shade: rand(0.04,0.12), hp, maxHp:hp, cap, occupants:[], breached:false, pulse:rand(0, TAU), pressure:0 });
-      }
-    }
-    addDistrict("mall", "MALL", "BIG CROWD", "#ffcb3b", 360, 360, 185);
-    addDistrict("hospital", "HOSPITAL", "SLOWS TURNING", "#5bd6ff", WORLD.w - 360, 360, 165);
-    addDistrict("station", "POLICE", "HEAT SOURCE", "#ff3b4e", 360, WORLD.h - 360, 170);
-    addDistrict("subway", "SUBWAY", "EVAC ROUTE", "#b96bff", WORLD.w - 360, WORLD.h - 360, 175);
+    addDistrict("mall", "MALL", "BIG CROWD", "#ffcb3b", 360, 360, 260, 190, 210);
+    addDistrict("hospital", "HOSPITAL", "SLOWS TURNING", "#5bd6ff", WORLD.w - 360, 360, 220, 175, 190);
+    addDistrict("station", "POLICE", "HEAT SOURCE", "#ff3b4e", 360, WORLD.h - 360, 230, 170, 195);
+    addDistrict("subway", "SUBWAY", "EVAC ROUTE", "#b96bff", WORLD.w - 360, WORLD.h - 360, 240, 180, 200);
   }
-  function addDistrict(id, name, role, color, x, y, r) {
-    districts.push({ id, name, role, color, x:x + rand(-55,55), y:y + rand(-55,55), r, secured:false, warned:false, pulse:rand(0, TAU) });
+  function addDistrict(id, name, role, color, x, y, w, h, r) {
+    const cx = x + rand(-35,35), cy = y + rand(-35,35);
+    const hp = Math.round(clamp(42 + (w*h) / 1700, 72, 130));
+    const cap = Math.min(16, 8 + Math.floor((w*h) / 14000));
+    const b = {
+      id, name, role, color, x:cx-w/2, y:cy-h/2, w, h, cx, cy, r:Math.max(58, Math.min(w,h)*0.42),
+      shade:0.12, hp, maxHp:hp, cap, occupants:[], breached:false, pulse:rand(0, TAU),
+      pressure:0, reinforced:0, barricadeMax:4, barricadeT:0,
+    };
+    blocks.push(b);
+    districts.push({ id, name, role, color, x:cx, y:cy, r, block:b, secured:false, warned:false, pulse:rand(0, TAU) });
   }
   function districtAt(x, y, id) {
     for (const d of districts) if ((!id || d.id === id) && dist2(x,y,d.x,d.y) < d.r*d.r) return d;
@@ -850,7 +845,7 @@
       x, y, vx:0, vy:0, r: 9,
       state: "human", turn: 0, fleeT: 0,
       wanderA: rand(0, TAU), wanderT: rand(0.5, 2),
-      tint: randInt(0, 5), anim: rand(0, TAU), hideBias: Math.random(),
+      tint: randInt(0, 5), anim: rand(0, TAU), hideBias: Math.random(), smart: Math.random() < 0.2,
     };
   }
 
@@ -1157,6 +1152,20 @@
     for (const b of blocks) {
       if (b.breached) continue;
       const weighted = dt > 0 ? b.pressure / dt : 0;
+      let builders = 0;
+      for (const h of b.occupants) if (h.smart) builders++;
+      if (builders && weighted < 1.2 && b.reinforced < b.barricadeMax) {
+        b.barricadeT += dt * builders;
+        if (b.barricadeT >= 3.4) {
+          b.barricadeT = 0;
+          b.reinforced++;
+          b.maxHp += 12;
+          b.hp = Math.min(b.maxHp, b.hp + 18);
+          b.pulse = 0;
+          toast(`${b.name} BARRICADED +${b.reinforced}`);
+          for (let i=0;i<8;i++) particles.push({ x:b.cx+rand(-b.w*0.42,b.w*0.42), y:b.cy+rand(-b.h*0.42,b.h*0.42), vx:rand(-25,25), vy:rand(-25,25), life:0.35, max:0.35, r:rand(2,4), color:"#ffcb3b" });
+        }
+      }
       if (weighted > 1.8) {
         b.hp -= (weighted - 1.8) * 1.45 * dt * (frenzy ? 1.35 : 1);
         if (Math.random() < 0.18) particles.push({ x:b.cx+rand(-b.w*0.35,b.w*0.35), y:b.cy+rand(-b.h*0.35,b.h*0.35), vx:rand(-30,30), vy:rand(-30,30), life:0.28, max:0.28, r:rand(2,4), color:"#ffcb3b" });
@@ -1857,21 +1866,34 @@
       b.pulse += 0.016;
       const occ = b.occupants.length;
       const dmg = 1 - clamp(b.hp / b.maxHp, 0, 1);
-      ctx.fillStyle = b.breached ? "rgba(55,45,38,0.34)" : `rgba(${occ ? 255 : 220},${occ ? 235 : 255},${occ ? 160 : 255},${b.shade + occ*0.018})`;
+      ctx.fillStyle = b.breached ? "rgba(55,45,38,0.34)" : `rgba(${occ ? 255 : 220},${occ ? 235 : 255},${occ ? 160 : 255},${b.shade + occ*0.018 + b.reinforced*0.018})`;
       roundRect(b.x, b.y, b.w, b.h, 8); ctx.fill();
       ctx.strokeStyle = b.breached ? "rgba(255,59,78,0.28)" : (occ ? "rgba(255,203,59,0.55)" : "rgba(120,160,120,0.18)");
-      ctx.lineWidth = 2; ctx.stroke();
+      ctx.lineWidth = 2 + b.reinforced*0.45; ctx.stroke();
+      if (b.reinforced && !b.breached) {
+        ctx.strokeStyle = "rgba(255,203,59,0.45)";
+        ctx.lineWidth = 3;
+        for (let k=0;k<b.reinforced;k++) {
+          const yy = b.y + 16 + k*13;
+          ctx.beginPath(); ctx.moveTo(b.x + 12, yy); ctx.lineTo(b.x + b.w - 12, yy + 5); ctx.stroke();
+        }
+      }
       if (occ || b.breached || dmg > 0.2) {
         ctx.fillStyle = "rgba(0,0,0,0.55)";
-        roundRect(b.cx - 26, b.cy - 13, 52, 26, 5); ctx.fill();
+        roundRect(b.cx - 34, b.cy - 15, 68, 30, 5); ctx.fill();
         ctx.fillStyle = b.breached ? "#ff3b4e" : "#ffcb3b";
         ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
-        ctx.fillText(b.breached ? "OPEN" : `HIDE ${occ}`, b.cx, b.cy - 1);
+        ctx.fillText(b.breached ? "OPEN" : `HIDE ${occ}`, b.cx, b.cy - 4);
+        if (!b.breached && b.reinforced) {
+          ctx.fillStyle = "#e8ffe5";
+          ctx.font = "bold 8px sans-serif";
+          ctx.fillText(`BARR ${b.reinforced}`, b.cx, b.cy + 7);
+        }
         if (!b.breached) {
           ctx.fillStyle = "rgba(255,255,255,0.14)";
-          ctx.fillRect(b.cx - 22, b.cy + 6, 44, 4);
+          ctx.fillRect(b.cx - 26, b.cy + 11, 52, 4);
           ctx.fillStyle = dmg > 0.65 ? "#ff3b4e" : "#6dff5b";
-          ctx.fillRect(b.cx - 22, b.cy + 6, 44 * clamp(b.hp/b.maxHp,0,1), 4);
+          ctx.fillRect(b.cx - 26, b.cy + 11, 52 * clamp(b.hp/b.maxHp,0,1), 4);
         }
       }
       if (dmg > 0.15 && !b.breached) {
