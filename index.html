@@ -246,7 +246,7 @@
   .draft-card .ds { font-size: 12px; color: #b6e6b0; line-height: 1.5; }
   .draft-card .own { font-size: 10px; color: var(--warn); margin-top: 10px; letter-spacing: 1px; }
   .upgrade-panel {
-    width: min(680px, 94vw);
+    width: min(860px, 96vw);
     margin-top: 18px;
     padding: 14px;
     background: rgba(8,18,10,0.78);
@@ -256,15 +256,39 @@
   .upgrade-head { display:flex; justify-content:space-between; gap:14px; align-items:center; margin-bottom:10px; color:#b6e6b0; font-size:12px; letter-spacing:1px; text-transform:uppercase; }
   .upgrade-head b { color: var(--warn); font-size: 15px; }
   .upgrade-grid { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+  .skill-tree {
+    min-width: 0;
+    display: grid;
+    gap: 8px;
+    align-content: start;
+  }
+  .tree-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    color: var(--inf);
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .tree-title span { color:#8fc98a; font-size:10px; }
   .upgrade-row {
     display:grid;
-    grid-template-columns: 92px 1fr 34px;
+    grid-template-columns: minmax(108px, 1fr) 78px 34px;
     gap:9px;
     align-items:center;
-    min-height:34px;
+    min-height:48px;
     text-align:left;
+    padding: 8px;
+    border: 1px solid rgba(109,255,91,0.11);
+    border-radius: 8px;
+    background: rgba(5,12,7,0.38);
   }
   .upgrade-name { color:var(--ink); font-size:12px; font-weight:900; letter-spacing:1px; text-transform:uppercase; }
+  .upgrade-row.locked { opacity:0.48; }
+  .upgrade-row.locked .upgrade-name { color:#8fc98a; }
   .upgrade-bars { display:flex; gap:5px; }
   .upgrade-pip { height:9px; flex:1; min-width:14px; border-radius:9px; background:rgba(255,255,255,0.12); border:1px solid rgba(109,255,91,0.12); }
   .upgrade-pip.on { background:linear-gradient(90deg, #ffcb3b, #6dff5b); box-shadow:0 0 10px rgba(109,255,91,0.28); }
@@ -310,6 +334,7 @@
   }
   @media (max-width: 640px) {
     .upgrade-grid { grid-template-columns: 1fr; }
+    .upgrade-row { grid-template-columns: minmax(120px, 1fr) 78px 34px; }
   }
 </style>
 </head>
@@ -354,8 +379,8 @@
     <h2>Mission</h2>
     <div style="font-size:14px; line-height:1.6; color:#cdeec9; text-align:left;">
       <b style="color:var(--inf)">Lunge and BITE</b> humans to turn them. The turned join your
-      horde and hunt others on their own. Clear every human to finish a level, then
-      <b style="color:var(--warn)">pick a mutation</b> — each level the military hits harder
+      horde and hunt others on their own. Clear cities to earn
+      <b style="color:var(--warn)">skill points</b> — every boss victory can also mutate your strain
       and sends <b style="color:var(--blood)">hunters</b> after you, the head zombie.
     </div>
     <h2 style="margin-top:18px;">Controls</h2>
@@ -367,8 +392,8 @@
       <div><b>M</b> — mute sound</div>
     </div>
     <div class="powerlist">
-      Spit, Pandemic, Frenzy &amp; more are <span style="color:var(--inf)">unlocked as level rewards</span> —
-      bite your way up first. Every <span style="color:var(--blood)">5th level is a BOSS</span> — use your skills.
+      Build <span style="color:var(--inf)">Patient Zero</span> or your <span style="color:var(--inf)">Horde</span>.
+      Medium bosses arrive every 5 levels, hard bosses every 10; level 50 is a milestone, not the end.
       <br><span style="color:#b96bff">🦇 Higher levels:</span> rival Night Stalkers race you for the humans.
       <br><span style="color:var(--warn)">📱 Mobile:</span> left side of screen moves, right side aims &amp; bites.
     </div>
@@ -391,9 +416,9 @@
 <div id="draftScreen" class="overlay hidden">
   <div class="subtitle" style="color:#ffcb3b; letter-spacing:3px;">LEVEL <span id="draftLvl">1</span> CLEARED</div>
   <div class="title" style="font-size:clamp(30px,7vw,64px);">EVOLVE</div>
-  <div style="font-size:14px; color:#9adf93; margin-top:6px; letter-spacing:1px;">Choose a permanent upgrade or one mutation</div>
+  <div style="font-size:14px; color:#9adf93; margin-top:6px; letter-spacing:1px;">Spend skill points. Boss victories also offer mutation drafts.</div>
   <div class="upgrade-panel">
-    <div class="upgrade-head"><span>Permanent upgrades</span><b id="upgradePoints">0 POINTS</b></div>
+    <div class="upgrade-head"><span>Skill tree</span><b id="upgradePoints">0 POINTS</b></div>
     <div id="upgradeGrid" class="upgrade-grid"></div>
   </div>
   <div id="draftCards"></div>
@@ -568,20 +593,122 @@
     flashAlpha: 0,
     mods: { fangs:0, packspeed:0, swift:0, hide:0, apex:0, runners:0, vigor:0, trail:0, detonator:0, lifesteal:0, spore:0, smart:0, siege:0, leapers:0, acid:0, plating:0, brood:0, scream:0 },
     statPoints: 0,
-    stats: { speed:0, health:0, strength:0, control:0 },
+    skills: {},
     evos: {},
-    boss: null, isBoss: false, bossSpawned: false, bossReward: false, waveTimer: 0,
+    boss: null, isBoss: false, bossSpawned: false, bossReward: false, bossRewardType: null, waveTimer: 0,
     rivalTimer: 0, rivalsAnnounced: false, hitStop: 0, infFrac: 0,
     districtCaptures: 0, escaped: 0, objectiveText: "", objectiveStep: 0,
     sheltersBreached: 0,
   };
-  const STAT_UPGRADES = [
-    { id:"speed", name:"Speed", desc:"+ movement and horde pace" },
-    { id:"health", name:"Health", desc:"+25 max HP" },
-    { id:"strength", name:"Strength", desc:"+ bite and building damage" },
-    { id:"control", name:"Control", desc:"+ smarter horde targeting" },
-  ];
-  const STAT_MAX = 5;
+  const SKILL_TREES = {
+    patient: {
+      name: "Patient Zero",
+      nodes: [
+        { id:"fangs", name:"Fangs", max:5, desc:"turn speed, bite handling" },
+        { id:"muscle", name:"Muscle", max:5, desc:"bite, boss, building damage" },
+        { id:"adrenal", name:"Adrenal", max:5, desc:"move speed, lunge reach" },
+        { id:"carapace", name:"Carapace", max:5, desc:"max HP, bullet resistance" },
+        { id:"regeneration", name:"Regeneration", max:5, desc:"heal from new infections" },
+        { id:"venom", name:"Venom", max:5, desc:"spit and acid damage" },
+        { id:"apexPredator", name:"Apex Predator", max:1, desc:"bites chain nearby prey", capstone:true, requires:14 },
+        { id:"unkillableStrain", name:"Unkillable Strain", max:1, desc:"ignore lethal damage once per level", capstone:true, requires:14 },
+        { id:"acidMaw", name:"Acid Maw", max:1, desc:"bites melt armor and barricades", capstone:true, requires:14 },
+      ],
+    },
+    horde: {
+      name: "Horde",
+      nodes: [
+        { id:"packMind", name:"Pack Mind", max:5, desc:"target sharing, follow range" },
+        { id:"swarmSpeed", name:"Swarm Speed", max:5, desc:"horde movement speed" },
+        { id:"thickDead", name:"Thick Dead", max:5, desc:"zombie HP vs bullets" },
+        { id:"broodSeed", name:"Brood Seed", max:5, desc:"start with victims turning" },
+        { id:"siegeInstinct", name:"Siege Instinct", max:5, desc:"building damage" },
+        { id:"specialStrains", name:"Special Strains", max:5, desc:"more runners and mutants" },
+        { id:"greenTide", name:"Green Tide", max:1, desc:"periodic surge to your target", capstone:true, requires:14 },
+        { id:"siegeHost", name:"Siege Host", max:1, desc:"swarm collapses shelters faster", capstone:true, requires:14 },
+        { id:"mutantArmy", name:"Mutant Army", max:1, desc:"special infected chance rises", capstone:true, requires:14 },
+      ],
+    },
+  };
+
+  const BOSS_ROTATION = {
+    medium: [
+      { id:"bruteCaptain", name:"Brute Captain", family:"behemoth", hp:86, speed:58, radius:32, desc:"big stomp, slow pursuit" },
+      { id:"hazmatPurifier", name:"Hazmat Purifier", family:"purifier", hp:112, speed:96, radius:26, desc:"decon pulses punish clumps" },
+      { id:"riotWarden", name:"Riot Warden", family:"commander", hp:132, speed:72, radius:30, desc:"calls guards around shelters" },
+      { id:"evacCommander", name:"Evac Commander", family:"commander", hp:150, speed:82, radius:28, desc:"protects fleeing civilians" },
+      { id:"rivalAlpha", name:"Rival Alpha", family:"rival", hp:172, speed:116, radius:25, desc:"steals prey and fights the horde" },
+    ],
+    hard: [
+      { id:"behemoth", name:"Behemoth", family:"behemoth", hp:145, speed:56, radius:35, desc:"stomp and cannon fan" },
+      { id:"blacksitePurifier", name:"Blacksite Purifier", family:"purifier", hp:178, speed:100, radius:28, desc:"purge pulses and ranged zones" },
+      { id:"fortressCore", name:"Fortress Core", family:"fortress", hp:220, speed:38, radius:38, desc:"reinforced-building anchor" },
+      { id:"apexHunter", name:"Apex Hunter", family:"hunter", hp:205, speed:128, radius:27, desc:"chases Patient Zero directly" },
+      { id:"omegaResponse", name:"Omega Response", family:"omega", hp:260, speed:94, radius:34, desc:"mixed level-50 response" },
+    ],
+  };
+
+  const LEVEL_SCALING = {
+    populationCap: 300,
+    soldierCap: 24,
+    shelterHpCap: 2.15,
+  };
+
+  function cycleLevel(level) {
+    if (level <= 50) return level;
+    return ((level - 1) % 50) + 1;
+  }
+  function isMediumBossLevel(level) { return level % 10 === 5; }
+  function isHardBossLevel(level) { return level % 10 === 0; }
+  function bossTier(level) { return Math.max(1, Math.floor((level - 1) / 50) + 1); }
+  function bossForLevel(level) {
+    if (!isMediumBossLevel(level) && !isHardBossLevel(level)) return null;
+    const cycle = cycleLevel(level);
+    const hard = isHardBossLevel(level);
+    const list = hard ? BOSS_ROTATION.hard : BOSS_ROTATION.medium;
+    const idx = hard ? Math.floor(cycle / 10) - 1 : Math.floor((cycle - 5) / 10);
+    return list[idx % list.length];
+  }
+  function populationForLevel(level) {
+    const boss = bossForLevel(level);
+    if (boss) return Math.min(96, 30 + Math.floor(level * 1.15) + bossTier(level) * 8);
+    return Math.min(LEVEL_SCALING.populationCap, Math.round(68 + level * 10.5 + Math.sqrt(level) * 18));
+  }
+  function clearTargetForLevel(level) {
+    if (level <= 4) return [0, 0.22, 0.28, 0.34, 0.40][level];
+    let target;
+    if (level <= 14) target = 0.50 + (level - 5) * (0.10 / 9);
+    else if (level <= 29) target = 0.60 + (level - 15) * (0.10 / 14);
+    else if (level <= 49) target = 0.70 + (level - 30) * (0.10 / 19);
+    else target = 0.75 + Math.min(0.10, (bossTier(level) - 1) * 0.02 + (cycleLevel(level) / 50) * 0.04);
+    return clamp(target - Math.min(0.05, state.escaped * 0.002), 0.45, 0.85);
+  }
+  function skillValue(id) { return state.skills[id] || 0; }
+  function treePoints(treeId) {
+    const tree = SKILL_TREES[treeId];
+    return tree.nodes.reduce((sum, n) => sum + skillValue(n.id), 0);
+  }
+  function skillNode(id) {
+    for (const treeId in SKILL_TREES) {
+      const node = SKILL_TREES[treeId].nodes.find(n => n.id === id);
+      if (node) return { treeId, node };
+    }
+    return null;
+  }
+  function playerDamageMultiplier() {
+    return 1 - Math.min(0.72, state.mods.hide * 0.18 + skillValue("carapace") * 0.08);
+  }
+  function hurtPlayer(amount) {
+    player.hp -= amount * playerDamageMultiplier();
+    if (player.hp <= 0 && skillValue("unkillableStrain") && !state.unkillableUsed) {
+      state.unkillableUsed = true;
+      player.hp = Math.max(18, state.maxHp * 0.18);
+      state.flashColor = "#6dff5b"; state.flashAlpha = 0.5; state.shake = Math.max(state.shake, 18);
+      toast("UNKILLABLE STRAIN");
+      return false;
+    }
+    return player.hp <= 0;
+  }
 
   const cam = { x: 0, y: 0 };
 
@@ -726,15 +853,22 @@
 
     if (i === 0) { // BITE — lunge toward the cursor and chomp what's in front
       const ang = aimAngle();
-      const reach = 1 + state.mods.apex * 0.45 + state.stats.strength * 0.06 + state.mods.acid * 0.035 + (state.evos.alphaBite ? 0.35 : 0) + Math.min(0.5, state.startCount / 600);
+      const reach = 1 + state.mods.apex * 0.45 + skillValue("adrenal") * 0.045 + skillValue("muscle") * 0.04 + state.mods.acid * 0.035 + skillValue("acidMaw") * 0.12 + (state.evos.alphaBite ? 0.35 : 0) + Math.min(0.5, state.startCount / 600);
       player.lungeT = 0.16; player.lungeA = ang; player.lungeSpeed = 600 * reach;
       const biteR = 34 * reach;
       const bx = player.x + Math.cos(ang)*18, by = player.y + Math.sin(ang)*18;
       let biteHit = false;
       for (const h of humans) if (h.state === "human" && dist2(bx,by,h.x,h.y) < biteR*biteR) { startTurn(h); biteHit = true; }
-      for (const b of blocks) if (!b.breached && dist2(bx,by,b.cx,b.cy) < (biteR+b.r)*(biteR+b.r)) { damageShelter(b, 1.4 + state.mods.siege * 0.55 + state.stats.strength * 0.3 + state.mods.acid * 0.34, true); biteHit = true; }
+      for (const b of blocks) if (!b.breached && dist2(bx,by,b.cx,b.cy) < (biteR+b.r)*(biteR+b.r)) { damageShelter(b, 3.4 + state.mods.siege * 0.9 + skillValue("muscle") * 0.45 + skillValue("siegeInstinct") * 0.5 + state.mods.acid * 0.5 + skillValue("acidMaw") * 1.1, true); biteHit = true; }
       for (const so of soldiers) if (dist2(bx,by,so.x,so.y) < (biteR+so.r)*(biteR+so.r)) { so.infect = (so.infect||0) + 0.5 + state.mods.acid * 0.12; blood(so.x,so.y); biteHit = true; }
-      if (state.boss && dist2(bx,by,state.boss.x,state.boss.y) < (biteR+state.boss.r)*(biteR+state.boss.r)) { state.boss.hp -= 6 + state.stats.strength * 1.8 + state.mods.acid * 1.4; blood(state.boss.x,state.boss.y); biteHit = true; }
+      if (state.boss && dist2(bx,by,state.boss.x,state.boss.y) < (biteR+state.boss.r)*(biteR+state.boss.r)) { state.boss.hp -= 6 + skillValue("muscle") * 1.7 + state.mods.acid * 1.4 + skillValue("venom") * 0.8 + skillValue("acidMaw") * 2.4; blood(state.boss.x,state.boss.y); biteHit = true; }
+      if (biteHit && skillValue("apexPredator")) {
+        let chained = 0;
+        for (const h of humans) {
+          if (chained >= 2 || h.state !== "human") continue;
+          if (dist2(h.x,h.y,bx,by) < 72*72) { startTurn(h); chained++; }
+        }
+      }
       for (const rv of rivals) if (dist2(bx,by,rv.x,rv.y) < (biteR+rv.r)*(biteR+rv.r)) { rv.hp -= 3; blood(rv.x,rv.y); biteHit = true; }
       // a connecting bite kicks the screen so chomps feel like they land
       if (biteHit) state.shake = Math.max(state.shake, 5);
@@ -793,7 +927,8 @@
   }
   function addDistrict(id, name, role, color, x, y, w, h, r) {
     const cx = x + rand(-35,35), cy = y + rand(-35,35);
-    const baseHp = Math.round(clamp(58 + (w*h) / 1200, 120, 220));
+    const shelterScale = Math.min(LEVEL_SCALING.shelterHpCap, 1 + Math.max(0, state.level - 1) * 0.018 + (bossTier(state.level) - 1) * 0.18);
+    const baseHp = Math.round(clamp(58 + (w*h) / 1200, 120, 220) * shelterScale);
     const hp = baseHp + 12; // every building starts with one barricade layer of its own
     const cap = Math.min(34, 18 + Math.floor((w*h) / 6500));
     const b = {
@@ -845,7 +980,7 @@
     state.rivalsAnnounced = false;
     state.mods = { fangs:0, packspeed:0, swift:0, hide:0, apex:0, runners:0, vigor:0, trail:0, detonator:0, lifesteal:0, spore:0, smart:0, siege:0, leapers:0, acid:0, plating:0, brood:0, scream:0 };
     state.statPoints = 0;
-    state.stats = { speed:0, health:0, strength:0, control:0 };
+    state.skills = {};
     state.evos = {};
     state.biteN = 0; state.trailT = 0;
     ABILITIES.forEach((a, i) => { a.unlocked = (i === 0); a.cd = 0; });
@@ -865,10 +1000,10 @@
     player.x = WORLD.w/2; player.y = WORLD.h/2 + 310; player.vx = 0; player.vy = 0;
     player.lungeT = 0; player.hp = state.maxHp;
 
-    // Boss levels (every 5th) have only a few civilians — just enough to keep
-    // rebuilding a small horde while you use your skills to bring the boss down.
-    const boss = (L % 5 === 0);
-    const N = boss ? (30 + Math.floor(L/5) * 6) : Math.min(270, 68 + L * 20); // capped for phone perf
+    // Boss levels have only enough civilians to rebuild a horde while Patient
+    // Zero and the swarm bring the boss down.
+    const boss = !!bossForLevel(L);
+    const N = populationForLevel(L);
     state.population = N + 1;          // + player
     for (let i = 0; i < N; i++) {
       let x, y, tries = 0;
@@ -881,15 +1016,15 @@
       while (dist2(x,y,player.x,player.y) < 320*320 && tries < 8);
       humans.push(makeHuman(x, y));
     }
-    for (let i = 0; i < Math.min(8, state.mods.brood * 2); i++) {
+    for (let i = 0; i < Math.min(14, state.mods.brood * 2 + skillValue("broodSeed") * 2); i++) {
       const h = humans[randInt(0, humans.length - 1)];
       if (h && h.state === "human" && dist2(h.x,h.y,player.x,player.y) > 180*180) startTurn(h);
     }
     for (let i = 0; i < 6; i++) spawnPickup();
 
     state.time = 0;
-    state.threat = Math.min(28, Math.max(1, 2 + L * 2.1));  // higher levels start hotter, early levels breathe
-    state.soldierTimer = Math.max(2.5, 7 - L * 0.5);
+    state.threat = Math.min(42, Math.max(1, 2 + Math.sqrt(L) * 5 + (bossTier(L) - 1) * 6));  // smooth heat ramp
+    state.soldierTimer = Math.max(1.8, 7 - Math.sqrt(L) * 0.9);
     state.shake = 0; state.flashAlpha = 0;
     state.startCount = 1; frenzyT = 0;
     state.lastLvl = null; state.hunterAnnounced = false; state.panicked = false;
@@ -900,8 +1035,9 @@
     state.biteN = 0; state.trailT = 0;
     state.rivalTimer = 6;
     state.isBoss = boss;
-    state.boss = null; state.bossSpawned = false; state.bossReward = false;
-    state.waveTimer = Math.max(8, 16 - state.level * 0.5);
+    state.boss = null; state.bossSpawned = false; state.bossReward = false; state.bossRewardType = null;
+    state.unkillableUsed = false;
+    state.waveTimer = Math.max(8, 18 - Math.sqrt(state.level) * 1.6);
     state.civReTimer = 0;
 
     ABILITIES.forEach(a => { a.cd = 0; });
@@ -941,17 +1077,17 @@
     const so = { x, y, vx:0, vy:0, aim:0, muzzle:0, infect:0, type };
     if (type === "hunter") {
       // hunter-killer team: ignores the horde, hunts YOU, leads its shots
-      so.r = 12; so.hp = 4 + Math.floor(L/2); so.cool = rand(0.4,1.0);
-      so.speed = Math.min(165, 128 + L*3); so.fireRate = 0.75; so.bspeed = 430;
-      so.dmg = Math.min(20, 9 + Math.floor(L/2)); so.want = 300;
+      so.r = 12; so.hp = 4 + Math.floor(Math.sqrt(L) * 1.4); so.cool = rand(0.4,1.0);
+      so.speed = Math.min(172, 128 + Math.sqrt(L)*9); so.fireRate = 0.75; so.bspeed = 430;
+      so.dmg = Math.min(22, 9 + Math.floor(Math.sqrt(L) * 2.1)); so.want = 300;
     } else if (type === "guard") {
-      so.r = 11; so.hp = 3 + Math.floor(L/3); so.cool = rand(0.35,0.9);
-      so.speed = Math.min(145, 96 + L*3); so.fireRate = 0.86; so.bspeed = Math.min(540, 380 + L*8);
-      so.dmg = Math.min(17, 7 + Math.floor(L/2)); so.want = 105;
+      so.r = 11; so.hp = 3 + Math.floor(Math.sqrt(L)); so.cool = rand(0.35,0.9);
+      so.speed = Math.min(150, 96 + Math.sqrt(L)*8); so.fireRate = 0.86; so.bspeed = Math.min(560, 380 + Math.sqrt(L)*34);
+      so.dmg = Math.min(18, 7 + Math.floor(Math.sqrt(L) * 1.7)); so.want = 105;
     } else {
-      so.r = 11; so.hp = 3 + Math.floor(L/3); so.cool = rand(0.5,1.5);
-      so.speed = Math.min(135, 90 + L*3); so.fireRate = 1.1; so.bspeed = Math.min(520, 360 + L*8);
-      so.dmg = Math.min(16, 6 + Math.floor(L/2)); so.want = 240;
+      so.r = 11; so.hp = 3 + Math.floor(Math.sqrt(L)); so.cool = rand(0.5,1.5);
+      so.speed = Math.min(140, 90 + Math.sqrt(L)*8); so.fireRate = 1.1; so.bspeed = Math.min(540, 360 + Math.sqrt(L)*34);
+      so.dmg = Math.min(17, 6 + Math.floor(Math.sqrt(L) * 1.6)); so.want = 240;
     }
     soldiers.push(so);
   }
@@ -990,26 +1126,25 @@
   }
 
   // ============================================================ BOSS
-  const BOSS_KINDS = ["behemoth", "purifier"];
   function spawnBoss() {
-    const L = state.level, tier = Math.floor(L/5);
-    const kind = BOSS_KINDS[(tier - 1) % BOSS_KINDS.length]; // L5 Behemoth, L10 Purifier, L15 Behemoth…
+    const L = state.level, tier = bossTier(L);
+    const def = bossForLevel(L) || BOSS_ROTATION.medium[0];
+    const hard = isHardBossLevel(L);
     const edge = randInt(0,3); let x, y;
     if (edge === 0)      { x = rand(200,WORLD.w-200); y = 60; }
     else if (edge === 1) { x = rand(200,WORLD.w-200); y = WORLD.h-60; }
     else if (edge === 2) { x = 60; y = rand(200,WORLD.h-200); }
     else                 { x = WORLD.w-60; y = rand(200,WORLD.h-200); }
-    const hp = tier === 1 ? 60 : (kind === "purifier" ? 100 : 120) + tier * 100;
+    const cycleBoost = Math.floor((L - 1) / 10) * (hard ? 18 : 12);
+    const hp = Math.round((def.hp + cycleBoost) * (1 + (tier - 1) * 0.72));
     state.boss = {
-      x, y, vx:0, vy:0, aim:0, muzzle:0, type:"boss", kind,
-      hp, maxHp: hp, r: kind === "purifier" ? 26 : 34,
-      speed: (kind === "purifier" ? 96 : 54) + tier*3, tier,
-      t: rand(2.5, 3.5), tele: 0, stomping: false,
+      x, y, vx:0, vy:0, aim:0, muzzle:0, type:"boss", kind:def.id, family:def.family, name:def.name,
+      hp, maxHp: hp, r: def.radius,
+      speed: def.speed + tier*5 + (hard ? 4 : 0), tier, hard,
+      t: rand(2.5, 3.5), tele: 0, stomping: false, addT: rand(3.2, 5.2),
     };
     state.bossSpawned = true;
-    toast(kind === "purifier"
-      ? "☣ VECTOR CONTROL — it purges your horde, swarm it down!"
-      : "☠ THE BEHEMOTH — use your skills to bring it down");
+    toast(`${hard ? "☠ HARD BOSS" : "⚠ BOSS"} — ${def.name.toUpperCase()}`);
     state.flashColor = "#ff3b4e"; state.flashAlpha = 0.45; state.shake = Math.max(state.shake, 16);
     AudioFX.horn();
   }
@@ -1020,8 +1155,21 @@
     b.aim = Math.atan2(dy, dx);
     if (b.muzzle > 0) b.muzzle -= dt;
     b.t -= dt;
+    b.addT -= dt;
+    if (b.addT <= 0) {
+      b.addT = Math.max(3.0, 7.4 - b.tier * 0.45 - (b.hard ? 1.0 : 0));
+      if (["commander","fortress","omega"].includes(b.family) && soldiers.length < 16 + b.tier * 2) {
+        const target = blocks.filter(x => !x.breached).sort((a, c) => c.occupants.length - a.occupants.length)[0];
+        if (target) spawnShelterGuards(target);
+        else spawnWave(Math.min(8 + b.tier, 14));
+      }
+      if (["rival","omega"].includes(b.family)) {
+        for (let i = 0; i < Math.min(2 + b.tier, 5); i++) if (rivals.length < 50) spawnRivalEdge();
+      }
+      if (["hunter","omega"].includes(b.family) && soldiers.length < 18) spawnSoldier("hunter");
+    }
 
-    if (b.kind === "purifier") {
+    if (b.family === "purifier") {
       // kites the player and emits decon PULSES that cure (kill) your zombies
       if (!b.stomping) {
         const moveDir = dl < 300 ? -1 : 0.3; // back off when crowded, else drift in
@@ -1042,9 +1190,9 @@
             }
           }
           if (dist2(player.x,player.y,b.x,b.y) < R*R) {
-            const tutorialBoss = b.tier === 1 ? 0.16 : 1;
-            player.hp -= (16 + b.tier*4) * tutorialBoss * (1 - Math.min(0.6, state.mods.hide*0.22)); blood(player.x,player.y);
-            if (player.hp <= 0) return endGame();
+            const tutorialBoss = b.kind === "hazmatPurifier" ? 0.45 : 1;
+            if (hurtPlayer((16 + b.tier*4) * tutorialBoss)) { blood(player.x,player.y); return endGame(); }
+            blood(player.x,player.y);
           }
           b.stomping = false; b.t = rand(3.2, 4.2);
         }
@@ -1053,12 +1201,15 @@
       }
     } else {
       // BEHEMOTH: marches in, stomps up close, cannon fan at range
+      const hunterLike = b.family === "hunter" || b.family === "rival";
+      const fortressLike = b.family === "fortress";
       if (!b.stomping) {
-        b.x = clamp(b.x + (dx/dl)*b.speed*dt, 20, WORLD.w-20);
-        b.y = clamp(b.y + (dy/dl)*b.speed*dt, 20, WORLD.h-20);
+        const chase = fortressLike ? 0.35 : 1;
+        b.x = clamp(b.x + (dx/dl)*b.speed*chase*dt, 20, WORLD.w-20);
+        b.y = clamp(b.y + (dy/dl)*b.speed*chase*dt, 20, WORLD.h-20);
         collideWithBlocks(b, b.r);
       }
-      const R = 150 + b.tier * 22;
+      const R = (hunterLike ? 118 : 150) + b.tier * 22;
       if (b.tele > 0) {
         b.tele -= dt; b.stomping = true;
         if (b.tele <= 0) {
@@ -1071,20 +1222,20 @@
             }
           }
           if (dist2(player.x,player.y,b.x,b.y) < R*R) {
-            const tutorialBoss = b.tier === 1 ? 0.16 : 1;
-            player.hp -= (22 + b.tier*5) * tutorialBoss * (1 - Math.min(0.6, state.mods.hide*0.22)); blood(player.x,player.y);
-            if (player.hp <= 0) return endGame();
+            const tutorialBoss = b.kind === "bruteCaptain" ? 0.45 : 1;
+            if (hurtPlayer((22 + b.tier*5) * tutorialBoss)) { blood(player.x,player.y); return endGame(); }
+            blood(player.x,player.y);
           }
           b.stomping = false; b.t = rand(3, 4);
         }
       } else if (b.t <= 0) {
-        if (dl < 230) { b.tele = 1.0; }
+        if (dl < (hunterLike ? 175 : 230)) { b.tele = hunterLike ? 0.62 : 1.0; }
         else {
-          const n = 7 + b.tier*2;
+          const n = (hunterLike ? 3 : 7) + b.tier*2;
           for (let i = 0; i < n; i++) {
-            const a = b.aim + (i-(n-1)/2)*0.15;
+            const a = b.aim + (i-(n-1)/2)*(hunterLike ? 0.07 : 0.15);
             bullets.push({ x:b.x+Math.cos(a)*b.r, y:b.y+Math.sin(a)*b.r,
-              vx:Math.cos(a)*330, vy:Math.sin(a)*330, r:4, life:2.2, dmg:(10+b.tier*2) * (b.tier === 1 ? 0.16 : 1) });
+              vx:Math.cos(a)*(hunterLike ? 430 : 330), vy:Math.sin(a)*(hunterLike ? 430 : 330), r:4, life:2.2, dmg:(10+b.tier*2) * (b.kind === "bruteCaptain" ? 0.55 : 1) });
           }
           b.muzzle = 0.1; AudioFX.gun(); b.t = rand(2.2, 3.2);
         }
@@ -1094,14 +1245,14 @@
     // shared: the horde gnaws it down; bite & spit handled where those resolve
     let attackers = 0;
     for (const h of humans) { if (h.state==="zombie" && dist2(h.x,h.y,b.x,b.y) < (h.r+b.r+4)*(h.r+b.r+4)) attackers++; }
-    if (attackers > 0) { b.hp -= attackers * dt * 4.5; if (Math.random()<0.2) blood(b.x,b.y); }
+    if (attackers > 0) { b.hp -= attackers * dt * (4.5 + skillValue("siegeInstinct") * 0.18 + skillValue("mutantArmy") * 0.35); if (Math.random()<0.2) blood(b.x,b.y); }
     if (b.hp <= 0) {
       for (let i=0;i<44;i++) burst(b.x, b.y, "#6dff5b");
       ring(b.x, b.y, 140, "#6dff5b"); state.shake = 22; state.hitStop = 0.09;
       state.flashColor = "#6dff5b"; state.flashAlpha = 0.5;
-      state.dna += 18 + state.level*2; state.bossReward = true;
+      state.dna += 18 + Math.floor(state.level*1.4); state.bossReward = true; state.bossRewardType = b.hard ? "hard" : "medium";
       AudioFX.levelup();
-      toast((b.kind === "purifier" ? "☣ VECTOR CONTROL DOWN!" : "⚙ BEHEMOTH DOWN!") + " Evolve your strain");
+      toast(`${b.name.toUpperCase()} DOWN — evolve your strain`);
       state.boss = null;
     }
   }
@@ -1110,17 +1261,18 @@
   function startTurn(h) {
     if (h.state !== "human") return;
     h.state = "turning";
-    const fang = 1 - Math.min(0.78, state.mods.fangs * 0.22 + state.stats.strength * 0.035 + state.mods.acid * 0.025); // Sharper Fangs speeds turning
+    const fang = 1 - Math.min(0.82, state.mods.fangs * 0.22 + skillValue("fangs") * 0.08 + skillValue("muscle") * 0.025 + state.mods.acid * 0.025 + skillValue("venom") * 0.025); // Fangs speed turning
     h.turn = rand(0.8, 1.5) * fang;
     burst(h.x, h.y, "#9dff7a");
   }
   // Assign a strain: shamblers crawl, walkers plod, runners sprint (they're the
   // only ones fast enough to catch fleeing civilians), brutes are slow tanks.
   function assignStrain(h) {
-    const runBias = state.mods.runners * 0.10;
-    const leapBias = state.mods.leapers * 0.055;
+    const special = skillValue("specialStrains") + skillValue("mutantArmy") * 3;
+    const runBias = state.mods.runners * 0.10 + special * 0.025;
+    const leapBias = state.mods.leapers * 0.055 + special * 0.012;
     const roll = Math.random();
-    const armor = Math.floor(state.mods.plating / 2);
+    const armor = Math.floor(state.mods.plating / 2) + Math.floor(skillValue("thickDead") / 2);
     if (roll < 0.06)               { h.ztype = "brute";    h.r = 16; h.speed = 70;  h.zhp = 4 + state.mods.plating; }
     else if (roll < 0.12)          { h.ztype = "bloater";  h.r = 13; h.speed = 80;  h.zhp = 1 + armor; }
     else if (roll < 0.12 + leapBias){ h.ztype = "leaper";  h.r = 8;  h.speed = 168; h.zhp = 1 + armor; h.leapCd = rand(0.5, 1.4); h.leapT = 0; }
@@ -1171,6 +1323,7 @@
       addFloat(h.x, h.y - 12, state.combo >= 3 ? `x${state.combo}` : "+1",
         state.combo >= 10 ? "#6dff5b" : "#9dff7a", state.combo >= 10 ? 18 : 13);
     }
+    if (skillValue("regeneration")) player.hp = clamp(player.hp + skillValue("regeneration") * 0.45, 0, state.maxHp);
     if (Math.random() < 0.12) AudioFX.turn();
   }
   // A soldier dragged under by the horde rises again as a tanky zombie.
@@ -1380,11 +1533,7 @@
     return !humans.some(h => h.state === "human" || h.state === "turning" || h.state === "hidden");
   }
   function clearFractionForLevel() {
-    if (state.level === 1) return 0.22;
-    if (state.level === 2) return 0.28;
-    if (state.level === 3) return 0.34;
-    if (state.level === 4) return 0.40;
-    return 0.80;
+    return clearTargetForLevel(state.level);
   }
   function earlyHordeTarget() {
     if (state.level === 1) return 10;
@@ -1411,9 +1560,9 @@
       { done:zombieCount >= 6, text:`BITE TO START A CHAIN (${Math.min(zombieCount,6)}/6)` },
       { done:state.sheltersBreached >= 1, text:"SWARM AN OCCUPIED BUILDING" },
       { done:state.districtCaptures >= 1, text:"OVERRUN A NAMED DISTRICT" },
-      { done:ABILITIES.some((a, i) => i > 0 && a.unlocked), text:"CLEAR THE LEVEL AND PICK A MUTATION" },
+      { done:treePoints("patient") + treePoints("horde") > 0, text:"CLEAR THE LEVEL AND SPEND A SKILL POINT" },
       { done:Object.keys(state.evos).length > 0, text:"COMBINE MUTATIONS TO EVOLVE YOUR STRAIN" },
-      { done:earlyMomentumReached(zombieCount) || levelTakeoverReached(remaining) || allBuildingsConquered(), text:state.level <= 4 ? `BUILD A HORDE (${Math.min(zombieCount, earlyHordeTarget())}/${earlyHordeTarget()})` : `TAKE ${Math.round(clearFractionForLevel()*100)}% OR ALL BUILDINGS` },
+      { done:state.isBoss ? !!state.bossSpawned && !state.boss : earlyMomentumReached(zombieCount) || levelTakeoverReached(remaining) || allBuildingsConquered(), text:state.isBoss && state.boss ? `KILL ${state.boss.name.toUpperCase()}` : (state.level <= 4 ? `BUILD A HORDE (${Math.min(zombieCount, earlyHordeTarget())}/${earlyHordeTarget()})` : `TAKE ${Math.round(clearFractionForLevel()*100)}% OR ALL BUILDINGS`) },
     ];
     const active = lines.find(x => !x.done);
     const extra = state.escaped ? ` · ${state.escaped} ESCAPED` : "";
@@ -1474,7 +1623,7 @@
         if (Math.hypot(tx,ty) > 14) { mx = tx; my = ty; }
       }
       const ml = Math.hypot(mx, my) || 1;
-      const speed = 215 + state.mods.swift * 22 + state.stats.speed * 14;  // Adrenal Glands stack
+      const speed = 215 + state.mods.swift * 22 + skillValue("adrenal") * 13;  // Adrenal Glands + tree
       player.vx = (mx/ml) * speed;
       player.vy = (my/ml) * speed;
       player.x = clamp(player.x + player.vx*dt, 14, WORLD.w-14);
@@ -1608,12 +1757,13 @@
           const d = dist2(h.x,h.y,t.x,t.y);
           if (d < bd) { bd = d; best = t; }
         }
-        const command = (state.mods.smart || state.stats.control || state.mods.scream) ? nearestPrey() : null;
-        const shelterTarget = nearestOccupiedShelter(h.x, h.y, best ? 420 + state.mods.smart*90 + state.stats.control*45 + state.mods.scream*35 : 900 + state.mods.smart*120 + state.stats.control*60 + state.mods.scream*60);
+        const packMind = skillValue("packMind");
+        const command = (state.mods.smart || packMind || state.mods.scream || skillValue("greenTide")) ? nearestPrey() : null;
+        const shelterTarget = nearestOccupiedShelter(h.x, h.y, best ? 420 + state.mods.smart*90 + packMind*45 + state.mods.scream*35 : 900 + state.mods.smart*120 + packMind*60 + state.mods.scream*60);
         // Chase a nearby victim; otherwise surge toward Patient Zero so the
         // horde reads as one growing swarm around you instead of scattering.
         let tx, ty;
-        const FOLLOW = 520 + state.mods.smart * 90 + state.stats.control * 70 + state.mods.scream * 75;
+        const FOLLOW = 520 + state.mods.smart * 90 + packMind * 70 + state.mods.scream * 75;
         if (state.boss && (state.startCount >= 10 || !best)) { tx = state.boss.x; ty = state.boss.y; }
         else if (command && command.shelter && dist2(h.x,h.y,command.x,command.y) < (760 + state.mods.smart*140)*(760 + state.mods.smart*140)) { tx = command.x; ty = command.y; }
         else if (command && command.state === "human" && dist2(h.x,h.y,command.x,command.y) < (650 + state.mods.smart*120)*(650 + state.mods.smart*120)) { tx = command.x; ty = command.y; }
@@ -1621,7 +1771,7 @@
         else if (best && bd < FOLLOW*FOLLOW) { tx = best.x; ty = best.y; }
         else { tx = player.x; ty = player.y; }
         const dx = tx - h.x, dy = ty - h.y, dl = Math.hypot(dx,dy) || 1;
-        const packBonus = state.mods.packspeed * 0.12 + state.stats.speed * 0.035 + state.stats.control * 0.025 + (state.evos.feralPack ? 0.10 : 0);
+        const packBonus = state.mods.packspeed * 0.12 + skillValue("swarmSpeed") * 0.055 + packMind * 0.025 + skillValue("greenTide") * (Math.sin(state.time * 1.8) > 0.55 ? 0.18 : 0) + (state.evos.feralPack ? 0.10 : 0);
         const base = (h.speed || 110) * (1 + packBonus);
         if (h.ztype === "leaper") {
           h.leapCd = (h.leapCd || 0) - dt;
@@ -1635,10 +1785,21 @@
         h.y = clamp(h.y + h.vy*dt, 10, WORLD.h-10);
         collideWithBlocks(h, h.r);
         h.anim += dt * 8;
+        // claw any building you're pressed against — a horde tears down walls
+        // (empty or occupied) on its own, not just the one it was sent to
+        for (const b of blocks) {
+          if (b.breached) continue;
+          if (dist2(h.x,h.y,b.cx,b.cy) < (b.r + h.r + 6)*(b.r + h.r + 6)) {
+            const claw = (h.ztype === "brute" ? 3 : h.ztype === "leaper" ? 2 : 1.4) * (1 + skillValue("muscle") * 0.08 + skillValue("siegeHost") * 0.4) * (frenzy ? 1.4 : 1);
+            damageShelter(b, dt * claw, true);
+            if (Math.random() < 0.04) particles.push({ x:b.cx+rand(-b.w*0.4,b.w*0.4), y:b.cy+rand(-b.h*0.4,b.h*0.4), vx:rand(-30,30), vy:rand(-30,30), life:0.3, max:0.3, r:rand(2,3), color:"#caa46a" });
+            break;
+          }
+        }
         // infect on contact
         if (best && bd < (h.r + best.r + 1)*(h.r + best.r + 1)) startTurn(best);
         if (shelterTarget && dist2(h.x,h.y,shelterTarget.cx,shelterTarget.cy) < (h.r+shelterTarget.r)*(h.r+shelterTarget.r)) {
-          const hit = (h.ztype === "brute" ? 1.6 : (h.ztype === "leaper" ? 1.15 : 0.75)) + state.stats.strength * 0.08;
+          const hit = (h.ztype === "brute" ? 1.6 : (h.ztype === "leaper" ? 1.15 : 0.75)) + skillValue("siegeInstinct") * 0.09 + skillValue("siegeHost") * 0.45;
           damageShelter(shelterTarget, dt * hit, false);
         }
       }
@@ -1650,14 +1811,14 @@
     const threatN = state.threat / 100;
     const L = state.level;
     const stationActive = districts.some(d => d.id === "station" && !d.secured && d.progress > 0.15);
-    const maxSoldiers = Math.min(20, Math.floor(2 + L*1.05 + threatN * 7)); // capped; surge comes from waves
+    const maxSoldiers = Math.min(LEVEL_SCALING.soldierCap, Math.floor(2 + Math.sqrt(L) * 3.2 + threatN * 7 + (bossTier(L) - 1) * 2)); // capped; surge comes from waves
     const hurtRelief = player.hp < state.maxHp*0.35 ? 1.6 : 1; // brief lull when near death
     const earlyGrace = L <= 2 && state.time < (L === 1 ? 24 : 16);
-    const spawnEvery = Math.max(0.55, ((3.6 - L*0.14) - threatN * 1.85 - (stationActive ? 0.35 : 0)) * hurtRelief);
+    const spawnEvery = Math.max(0.65, ((4.0 - Math.sqrt(L)*0.32) - threatN * 1.8 - (stationActive ? 0.35 : 0)) * hurtRelief);
     if (L >= 3 && !earlyGrace && state.soldierTimer <= 0 && soldiers.length < maxSoldiers && state.threat > (L === 3 ? 12 : 6) && !state.boss) {
       state.soldierTimer = spawnEvery;
       // hunter-killers grow more common with level and heat — they come for YOU
-      const hunterChance = Math.min(0.55, 0.08*L + threatN*0.3);
+      const hunterChance = Math.min(0.50, 0.035*Math.sqrt(L)*3 + threatN*0.26);
       const isHunter = Math.random() < hunterChance;
       spawnSoldier(isHunter ? "hunter" : "grunt");
       if (isHunter && !state.hunterAnnounced) {
@@ -1672,8 +1833,8 @@
     if (state.level >= 5 && state.threat > 24 && !state.boss) {
       state.waveTimer -= dt;
       if (state.waveTimer <= 0) {
-        state.waveTimer = Math.max(9, 20 - state.level*0.7);
-        spawnWave(Math.min(13, 4 + Math.floor(state.level*1.1)));
+        state.waveTimer = Math.max(9, 22 - Math.sqrt(state.level)*2.1);
+        spawnWave(Math.min(14, 4 + Math.floor(Math.sqrt(state.level)*2.2)));
       }
     }
 
@@ -1681,7 +1842,7 @@
     // defended buildings instead of just waiting for civilians to reappear.
     state.guardTimer -= dt;
     if (state.level >= 4 && state.panicked && state.threat > 16 && !state.boss && state.guardTimer <= 0 && soldiers.length < maxSoldiers + 3) {
-      state.guardTimer = Math.max(5, 11 - state.level * 0.35);
+      state.guardTimer = Math.max(5, 12 - Math.sqrt(state.level) * 1.2);
       let target = null, occ = 0;
       for (const b of blocks) {
         if (b.breached || b.guarded || b.occupants.length < 2) continue;
@@ -1745,8 +1906,7 @@
       }
       // claw the player
       if (dpl < (rv.r+player.r+2)*(rv.r+player.r+2)) {
-        player.hp -= dt*8 * (1 - Math.min(0.6, state.mods.hide*0.22));
-        if (player.hp <= 0) return endGame();
+        if (hurtPlayer(dt*8)) return endGame();
       }
     }
     rivals = rivals.filter(rv => rv.hp > 0);
@@ -1822,8 +1982,8 @@
           }
         }
         if (dist2(player.x,player.y,s.x,s.y) < s.r*s.r) {
-          player.hp -= 42 * (1 - Math.min(0.6, state.mods.hide*0.22)); blood(player.x, player.y);
-          if (player.hp <= 0) { strikes = strikes.filter(x => !x.done); return endGame(); }
+          blood(player.x, player.y);
+          if (hurtPlayer(42)) { strikes = strikes.filter(x => !x.done); return endGame(); }
         }
       }
     }
@@ -1836,10 +1996,10 @@
       b.x += b.vx*dt; b.y += b.vy*dt; b.life -= dt;
       // hit player
       if (dist2(b.x,b.y,player.x,player.y) < (b.r+player.r)*(b.r+player.r)) {
-        const dmg = (b.dmg || 9) * (1 - Math.min(0.6, state.mods.hide * 0.22)); // Thick Hide
-        player.hp -= dmg; b.life = 0; blood(player.x, player.y); state.shake = 7; AudioFX.hurt();
+        const dmg = b.dmg || 9;
+        b.life = 0; blood(player.x, player.y); state.shake = 7; AudioFX.hurt();
         state.flashColor = "#ff3b4e"; state.flashAlpha = 0.35;
-        if (player.hp <= 0) return endGame();
+        if (hurtPlayer(dmg)) return endGame();
       }
       // hit zombie (brutes & turned soldiers soak several rounds)
       if (b.life > 0) {
@@ -2071,13 +2231,14 @@
           ctx.beginPath(); ctx.moveTo(b.x + 12, yy); ctx.lineTo(b.x + b.w - 12, yy + 5); ctx.stroke();
         }
       }
-      if (occ || b.breached || dmg > 0.2) {
+      const playerNear = dist2(player.x, player.y, b.cx, b.cy) < b.outerR * b.outerR;
+      if (occ || b.breached || dmg > 0.02 || playerNear) {
         ctx.fillStyle = "rgba(0,0,0,0.55)";
         roundRect(b.cx - 34, b.cy - 15, 68, 30, 5); ctx.fill();
         const rebuilding = b.breached && b.rebuildT > 0;
         ctx.fillStyle = rebuilding ? "#ffcb3b" : (b.breached ? "#ff3b4e" : "#ffcb3b");
         ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
-        ctx.fillText(rebuilding ? "REBUILDING" : (b.breached ? "OPEN" : `HIDE ${occ}`), b.cx, b.cy - 4);
+        ctx.fillText(rebuilding ? "REBUILDING" : (b.breached ? "OPEN" : (occ ? `HIDE ${occ}` : "BARRIER")), b.cx, b.cy - 4);
         if (rebuilding) {
           ctx.fillStyle = "rgba(255,255,255,0.14)";
           ctx.fillRect(b.cx - 26, b.cy + 8, 52, 4);
@@ -2247,7 +2408,7 @@
       ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(x0-2, y0-2, w+4, 16);
       ctx.fillStyle = "#ff3b4e"; ctx.fillRect(x0, y0, w*clamp(b.hp/b.maxHp,0,1), 12);
       ctx.fillStyle = "#fff"; ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
-      ctx.fillText(b.kind === "purifier" ? "VECTOR CONTROL" : "THE BEHEMOTH", W/2, y0 - 5);
+      ctx.fillText(`${b.name.toUpperCase()} · TIER ${b.tier}`, W/2, y0 - 5);
     }
 
     // on-screen touch controls (mobile): left joystick + right aim ring
@@ -2413,10 +2574,11 @@
   }
 
   function drawBoss(b) {
-    const pur = b.kind === "purifier";
+    const pur = b.family === "purifier";
+    const hunter = b.family === "hunter" || b.family === "rival";
     // attack telegraph (world space, under the body)
     if (b.tele > 0) {
-      const R = (pur ? 170 + b.tier*18 : 150 + b.tier*22), p = 1 - b.tele/1.0;
+      const R = (pur ? 170 + b.tier*18 : (hunter ? 118 : 150) + b.tier*22), p = 1 - b.tele/1.0;
       ctx.fillStyle = pur ? `rgba(90,200,255,${0.08 + 0.22*p})` : `rgba(255,80,60,${0.10 + 0.25*p})`;
       ctx.beginPath(); ctx.arc(b.x, b.y, R, 0, TAU); ctx.fill();
       ctx.strokeStyle = pur ? "rgba(91,214,255,0.9)" : "rgba(255,59,78,0.9)"; ctx.lineWidth = 4;
@@ -2425,10 +2587,10 @@
     ctx.save();
     ctx.translate(b.x, b.y);
     ctx.shadowColor = pur ? "rgba(91,214,255,0.55)" : "rgba(255,59,78,0.55)"; ctx.shadowBlur = 16;
-    ctx.fillStyle = pur ? "#163b45" : "#3a161d"; ctx.strokeStyle = pur ? "#0a1c20" : "#160a0d"; ctx.lineWidth = 5;
+    ctx.fillStyle = pur ? "#163b45" : (b.family === "rival" ? "#351650" : "#3a161d"); ctx.strokeStyle = pur ? "#0a1c20" : "#160a0d"; ctx.lineWidth = 5;
     ctx.beginPath(); ctx.ellipse(0, 4, b.r*0.95, b.r*1.1, 0, 0, TAU); ctx.fill(); ctx.stroke();
     ctx.shadowBlur = 0;
-    ctx.fillStyle = pur ? "#2a6b78" : "#5a2630";
+    ctx.fillStyle = pur ? "#2a6b78" : (b.family === "rival" ? "#6b2fae" : "#5a2630");
     ctx.beginPath(); ctx.arc(0, -b.r*0.5, b.r*0.5, 0, TAU); ctx.fill();
     const dmg = 1 - b.hp/b.maxHp;
     if (dmg > 0) { ctx.globalAlpha = dmg*0.5; ctx.fillStyle = "#6dff5b"; ctx.beginPath(); ctx.arc(0,0,b.r,0,TAU); ctx.fill(); ctx.globalAlpha = 1; }
@@ -2579,33 +2741,45 @@
     if (!pts || !grid) return;
     pts.textContent = `${state.statPoints} POINT${state.statPoints === 1 ? "" : "S"}`;
     grid.innerHTML = "";
-    for (const st of STAT_UPGRADES) {
-      const lvl = state.stats[st.id] || 0;
-      const row = document.createElement("div");
-      row.className = "upgrade-row";
-      const pips = Array.from({ length: STAT_MAX }, (_, i) => `<i class="upgrade-pip${i < lvl ? " on" : ""}"></i>`).join("");
-      row.innerHTML = `<div><div class="upgrade-name">${st.name}</div><div style="font-size:10px;color:#8fc98a;line-height:1.2;">${st.desc}</div></div>` +
-        `<div class="upgrade-bars">${pips}</div>` +
-        `<button class="upgrade-plus" type="button" aria-label="Upgrade ${st.name}">+</button>`;
-      const btn = row.querySelector("button");
-      btn.disabled = state.statPoints <= 0 || lvl >= STAT_MAX;
-      btn.addEventListener("click", () => spendStat(st.id));
-      grid.appendChild(row);
+    for (const treeId of ["patient", "horde"]) {
+      const tree = SKILL_TREES[treeId];
+      const col = document.createElement("div");
+      col.className = "skill-tree";
+      col.innerHTML = `<div class="tree-title">${tree.name}<span>${treePoints(treeId)} invested</span></div>`;
+      for (const node of tree.nodes) {
+        const lvl = skillValue(node.id);
+        const locked = node.capstone && treePoints(treeId) < node.requires;
+        const row = document.createElement("div");
+        row.className = "upgrade-row" + (locked ? " locked" : "");
+        const pips = Array.from({ length: node.max }, (_, i) => `<i class="upgrade-pip${i < lvl ? " on" : ""}"></i>`).join("");
+        const lockText = locked ? `Requires ${node.requires} in tree. ` : "";
+        row.innerHTML = `<div><div class="upgrade-name">${node.name}</div><div style="font-size:10px;color:#8fc98a;line-height:1.2;">${lockText}${node.desc}</div></div>` +
+          `<div class="upgrade-bars">${pips}</div>` +
+          `<button class="upgrade-plus" type="button" aria-label="Upgrade ${node.name}">+</button>`;
+        const btn = row.querySelector("button");
+        btn.disabled = state.statPoints <= 0 || lvl >= node.max || locked;
+        btn.addEventListener("click", () => spendSkill(node.id));
+        col.appendChild(row);
+      }
+      grid.appendChild(col);
     }
   }
 
-  function spendStat(id) {
-    if (state.statPoints <= 0 || state.stats[id] == null || state.stats[id] >= STAT_MAX) return;
-    const st = STAT_UPGRADES.find(x => x.id === id);
+  function spendSkill(id) {
+    const info = skillNode(id);
+    if (!info) return;
+    const node = info.node;
+    if (state.statPoints <= 0 || skillValue(id) >= node.max) return;
+    if (node.capstone && treePoints(info.treeId) < node.requires) return;
     state.statPoints--;
-    state.stats[id]++;
-    if (id === "health") {
+    state.skills[id] = skillValue(id) + 1;
+    if (id === "carapace") {
       state.maxHp += 25;
       player.hp = Math.min(state.maxHp, player.hp + 25);
     }
     AudioFX.pickup();
     updateUpgradeUI();
-    advanceFromDraft(st ? st.name : "Upgrade");
+    if (state.statPoints <= 0 && !state.bossReward) advanceFromDraft(node.name);
   }
 
   let toastT = 0;
@@ -2632,8 +2806,19 @@
 
   // Cleared a level -> offer a draft of mutations.
   const REROLL_COST = 4;
+  const RARE_POWERUPS = new Set(["pandemic","frenzy","trail","detonator","spore","acid","plating","brood","leapers","scream"]);
   function rollDraft() {
-    const avail = POWERUPS.filter(p => p.repeat || !isOwned(p));
+    const wrap = el("draftCards");
+    const b = el("rerollBtn");
+    if (!state.bossReward) {
+      wrap.innerHTML = `<div style="color:#b6e6b0;font-size:12px;letter-spacing:1px;margin-top:4px;">Regular clears grant skill points. Mutations return after boss fights.</div>`;
+      b.style.display = "none";
+      updateUpgradeUI();
+      return;
+    }
+    b.style.display = "";
+    let avail = POWERUPS.filter(p => p.repeat || !isOwned(p));
+    if (state.bossRewardType === "hard") avail = avail.filter(p => RARE_POWERUPS.has(p.id) || ABILITY_OF[p.id] != null);
     const pool = avail.slice(), picks = [];
     // Guarantee a skill unlock appears each draft until all four are earned,
     // so abilities are dependable progression rather than pure RNG.
@@ -2642,10 +2827,8 @@
       const g = lockedAbilities[randInt(0, lockedAbilities.length-1)];
       picks.push(g); pool.splice(pool.indexOf(g), 1);
     }
-    const count = state.bossReward ? 4 : 3; // beating a boss gives an extra pick
+    const count = state.bossRewardType === "hard" ? 4 : 3;
     while (picks.length < count && pool.length) picks.push(pool.splice(randInt(0, pool.length-1), 1)[0]);
-    state.bossReward = false;
-    const wrap = el("draftCards");
     wrap.innerHTML = "";
     picks.forEach(pu => {
       const owned = stackCount(pu);
@@ -2658,7 +2841,6 @@
       d.addEventListener("click", () => pickPower(pu));
       wrap.appendChild(d);
     });
-    const b = el("rerollBtn");
     b.textContent = `↻ Reroll (${REROLL_COST} biomass) · have ${state.dna}`;
     b.style.opacity = state.dna >= REROLL_COST ? "1" : "0.45";
     updateUpgradeUI();
@@ -2688,8 +2870,15 @@
 
   function pickPower(pu) {
     applyPower(pu.id);
-    state.statPoints = 0;
-    advanceFromDraft(pu.name);
+    state.bossReward = false;
+    state.bossRewardType = null;
+    if (state.statPoints > 0) {
+      AudioFX.pickup();
+      rollDraft();
+      toast(`${pu.name} mutated — spend your skill point`);
+    } else {
+      advanceFromDraft(pu.name);
+    }
   }
 
   function loadBest() { try { return JSON.parse(localStorage.getItem("pz_best") || "{}"); } catch (e) { return {}; } }
@@ -2720,7 +2909,8 @@
     const m = Math.floor(tt/60), s = Math.floor(tt%60);
     el("endTime").textContent = `${m}:${s.toString().padStart(2,"0")}`;
     let tier;
-    if (state.level >= 15)     tier = "A continental pandemic — humanity is on the brink.";
+    if (state.level >= 50)     tier = "Level 50 breached. The response cycle escalates, but the outbreak continues.";
+    else if (state.level >= 15) tier = "A continental pandemic — humanity is on the brink.";
     else if (state.level >= 8) tier = "A national emergency; they barely held the line.";
     else if (state.level >= 4) tier = "A regional outbreak, contained at great cost.";
     else                       tier = "A local scare. The CDC is still nervous.";
