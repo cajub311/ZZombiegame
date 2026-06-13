@@ -788,15 +788,15 @@
     for (let i = 0; i < 6; i++) spawnPickup();
 
     state.time = 0;
-    state.threat = Math.min(22, 3 + L * 2);  // higher levels start hotter
-    state.soldierTimer = Math.max(2, 6 - L * 0.4);
+    state.threat = Math.min(22, Math.max(1, 1 + L * 1.6));  // higher levels start hotter, early levels breathe
+    state.soldierTimer = Math.max(3, 8 - L * 0.45);
     state.shake = 0; state.flashAlpha = 0;
     state.startCount = 1; frenzyT = 0;
     state.lastLvl = null; state.hunterAnnounced = false; state.panicked = false;
     state.strikeTimer = 0; state.strikeWarned = false;
     state.districtCaptures = 0; state.escaped = 0; state.objectiveStep = 0; state.objectiveText = "";
     state.sheltersBreached = 0;
-    state.guardTimer = 3;
+    state.guardTimer = 6;
     state.biteN = 0; state.trailT = 0;
     state.rivalTimer = 6;
     state.isBoss = boss;
@@ -843,15 +843,15 @@
       // hunter-killer team: ignores the horde, hunts YOU, leads its shots
       so.r = 12; so.hp = 4 + Math.floor(L/2); so.cool = rand(0.4,1.0);
       so.speed = Math.min(165, 128 + L*3); so.fireRate = 0.75; so.bspeed = 430;
-      so.dmg = Math.min(20, 11 + Math.floor(L/2)); so.want = 300;
+      so.dmg = Math.min(20, 9 + Math.floor(L/2)); so.want = 300;
     } else if (type === "guard") {
       so.r = 11; so.hp = 3 + Math.floor(L/3); so.cool = rand(0.35,0.9);
       so.speed = Math.min(145, 96 + L*3); so.fireRate = 0.86; so.bspeed = Math.min(540, 380 + L*8);
-      so.dmg = Math.min(17, 9 + Math.floor(L/2)); so.want = 105;
+      so.dmg = Math.min(17, 7 + Math.floor(L/2)); so.want = 105;
     } else {
       so.r = 11; so.hp = 3 + Math.floor(L/3); so.cool = rand(0.5,1.5);
       so.speed = Math.min(135, 90 + L*3); so.fireRate = 1.1; so.bspeed = Math.min(520, 360 + L*8);
-      so.dmg = Math.min(16, 8 + Math.floor(L/2)); so.want = 240;
+      so.dmg = Math.min(16, 6 + Math.floor(L/2)); so.want = 240;
     }
     soldiers.push(so);
   }
@@ -1336,9 +1336,9 @@
           if (dist2(h.x,h.y,z.x,z.y) < SIGHT*SIGHT) { fx += h.x - z.x; fy += h.y - z.y; threatened = true; }
         }
         const shelter = nearestShelter(h.x, h.y, panic ? 520 : 230);
-        const evacCap = Math.max(6, Math.floor(state.population * 0.12));
-        const evac = panic && infectFrac > 0.22 && state.escaped < evacCap && !threatened && nearestOpenDistrict(h.x, h.y, "subway");
-        const shelterReady = panic && infectFrac > 0.28 && zombieCount >= 14 && h.hideBias < 0.25;
+        const evacCap = Math.max(5, Math.floor(state.population * 0.09));
+        const evac = panic && state.level >= 2 && infectFrac > 0.30 && state.escaped < evacCap && !threatened && nearestOpenDistrict(h.x, h.y, "subway");
+        const shelterReady = panic && infectFrac > 0.34 && zombieCount >= 18 && h.hideBias < 0.22;
         if (shelterReady && shelter && threatened && dist2(h.x,h.y,shelter.cx,shelter.cy) < 150*150) {
           enterShelter(h, shelter);
         } else if (panic && threatened) {
@@ -1434,10 +1434,11 @@
     const threatN = state.threat / 100;
     const L = state.level;
     const stationActive = districts.some(d => d.id === "station" && !d.secured && d.progress > 0.15);
-    const maxSoldiers = Math.min(20, Math.floor(4 + L*1.2 + threatN * 8)); // capped; surge comes from waves
+    const maxSoldiers = Math.min(20, Math.floor(2 + L*1.05 + threatN * 7)); // capped; surge comes from waves
     const hurtRelief = player.hp < state.maxHp*0.35 ? 1.6 : 1; // brief lull when near death
-    const spawnEvery = Math.max(0.45, ((3.0 - L*0.15) - threatN * 2.2 - (stationActive ? 0.45 : 0)) * hurtRelief);
-    if (state.soldierTimer <= 0 && soldiers.length < maxSoldiers && state.threat > 5 && !state.boss) {
+    const earlyGrace = L <= 2 && state.time < (L === 1 ? 22 : 14);
+    const spawnEvery = Math.max(0.55, ((3.6 - L*0.14) - threatN * 1.85 - (stationActive ? 0.35 : 0)) * hurtRelief);
+    if (!earlyGrace && state.soldierTimer <= 0 && soldiers.length < maxSoldiers && state.threat > (L <= 2 ? 12 : 6) && !state.boss) {
       state.soldierTimer = spawnEvery;
       // hunter-killers grow more common with level and heat — they come for YOU
       const hunterChance = Math.min(0.55, 0.08*L + threatN*0.3);
@@ -1452,7 +1453,7 @@
     }
 
     // assault-wave director: coordinated walls that advance as a front
-    if (state.level >= 2 && state.threat > 12 && !state.boss) {
+    if (state.level >= 3 && state.threat > 18 && !state.boss) {
       state.waveTimer -= dt;
       if (state.waveTimer <= 0) {
         state.waveTimer = Math.max(9, 20 - state.level*0.7);
@@ -1463,7 +1464,7 @@
     // responders protect occupied shelters, forcing the horde to overwhelm
     // defended buildings instead of just waiting for civilians to reappear.
     state.guardTimer -= dt;
-    if (state.level >= 2 && state.panicked && state.threat > 8 && !state.boss && state.guardTimer <= 0 && soldiers.length < maxSoldiers + 3) {
+    if (state.level >= 3 && state.panicked && state.threat > 12 && !state.boss && state.guardTimer <= 0 && soldiers.length < maxSoldiers + 3) {
       state.guardTimer = Math.max(5, 11 - state.level * 0.35);
       let target = null, occ = 0;
       for (const b of blocks) {
@@ -1704,7 +1705,7 @@
       p.bob += dt*3;
       if (dist2(p.x,p.y,player.x,player.y) < (p.r+player.r+4)*(p.r+player.r+4)) {
         p.taken = true; state.dna += 1;
-        player.hp = clamp(player.hp + 6, 0, state.maxHp); // biomass heals a little
+        player.hp = clamp(player.hp + 9, 0, state.maxHp); // biomass heals a little
         for (let i=0;i<10;i++) burst(p.x,p.y,"#ffcb3b"); AudioFX.pickup();
       }
     }
