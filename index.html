@@ -520,6 +520,7 @@
     boss: null, isBoss: false, bossSpawned: false, bossReward: false, waveTimer: 0,
     rivalTimer: 0, rivalsAnnounced: false, hitStop: 0, infFrac: 0,
     districtCaptures: 0, escaped: 0, objectiveText: "", objectiveStep: 0,
+    sheltersBreached: 0,
   };
 
   const cam = { x: 0, y: 0 };
@@ -625,6 +626,11 @@
       if (h.state !== "human" && h.state !== "turning") continue;
       const d = dist2(h.x,h.y,player.x,player.y); if (d < bd) { bd = d; best = h; }
     }
+    for (const b of blocks) {
+      if (!b.breached && b.occupants && b.occupants.length) {
+        const d = dist2(b.cx,b.cy,player.x,player.y); if (d < bd) { bd = d; best = { x:b.cx, y:b.cy, shelter:b }; }
+      }
+    }
     if (!best && state.boss) best = state.boss;
     if (!best) for (const s of soldiers) { const d = dist2(s.x,s.y,player.x,player.y); if (d < bd) { bd = d; best = s; } }
     return best;
@@ -653,6 +659,7 @@
       const biteR = 34 * reach;
       const bx = player.x + Math.cos(ang)*18, by = player.y + Math.sin(ang)*18;
       for (const h of humans) if (h.state === "human" && dist2(bx,by,h.x,h.y) < biteR*biteR) startTurn(h);
+      for (const b of blocks) if (!b.breached && b.occupants.length && dist2(bx,by,b.cx,b.cy) < (biteR+b.r)*(biteR+b.r)) damageShelter(b, 1.4, true);
       for (const so of soldiers) if (dist2(bx,by,so.x,so.y) < (biteR+so.r)*(biteR+so.r)) { so.infect = (so.infect||0) + 0.5; blood(so.x,so.y); }
       if (state.boss && dist2(bx,by,state.boss.x,state.boss.y) < (biteR+state.boss.r)*(biteR+state.boss.r)) { state.boss.hp -= 6; blood(state.boss.x,state.boss.y); }
       for (const rv of rivals) if (dist2(bx,by,rv.x,rv.y) < (biteR+rv.r)*(biteR+rv.r)) { rv.hp -= 3; blood(rv.x,rv.y); }
@@ -710,7 +717,10 @@
         const by = margin + j*cell + rand(20,40);
         const bw = cell - rand(70,120);
         const bh = cell - rand(70,120);
-        blocks.push({ x: bx, y: by, w: Math.max(60,bw), h: Math.max(60,bh), shade: rand(0.04,0.12) });
+        const w = Math.max(60,bw), h = Math.max(60,bh);
+        const hp = Math.round(clamp(28 + (w*h) / 2400, 50, 95));
+        const cap = Math.min(5, 2 + Math.floor((w*h) / 22000));
+        blocks.push({ x: bx, y: by, w, h, cx:bx+w/2, cy:by+h/2, r:Math.max(42, Math.min(w,h)*0.42), shade: rand(0.04,0.12), hp, maxHp:hp, cap, occupants:[], breached:false, pulse:rand(0, TAU), pressure:0 });
       }
     }
     addDistrict("mall", "MALL", "BIG CROWD", "#ffcb3b", 360, 360, 185);
@@ -779,6 +789,8 @@
     state.lastLvl = null; state.hunterAnnounced = false; state.panicked = false;
     state.strikeTimer = 0; state.strikeWarned = false;
     state.districtCaptures = 0; state.escaped = 0; state.objectiveStep = 0; state.objectiveText = "";
+    state.sheltersBreached = 0;
+    state.guardTimer = 3;
     state.biteN = 0; state.trailT = 0;
     state.rivalTimer = 6;
     state.isBoss = boss;
@@ -798,7 +810,7 @@
       x, y, vx:0, vy:0, r: 9,
       state: "human", turn: 0, fleeT: 0,
       wanderA: rand(0, TAU), wanderT: rand(0.5, 2),
-      tint: randInt(0, 5), anim: rand(0, TAU),
+      tint: randInt(0, 5), anim: rand(0, TAU), hideBias: Math.random(),
     };
   }
 
@@ -826,12 +838,29 @@
       so.r = 12; so.hp = 4 + Math.floor(L/2); so.cool = rand(0.4,1.0);
       so.speed = Math.min(165, 128 + L*3); so.fireRate = 0.75; so.bspeed = 430;
       so.dmg = Math.min(20, 11 + Math.floor(L/2)); so.want = 300;
+    } else if (type === "guard") {
+      so.r = 11; so.hp = 3 + Math.floor(L/3); so.cool = rand(0.35,0.9);
+      so.speed = Math.min(145, 96 + L*3); so.fireRate = 0.86; so.bspeed = Math.min(540, 380 + L*8);
+      so.dmg = Math.min(17, 9 + Math.floor(L/2)); so.want = 105;
     } else {
       so.r = 11; so.hp = 3 + Math.floor(L/3); so.cool = rand(0.5,1.5);
       so.speed = Math.min(135, 90 + L*3); so.fireRate = 1.1; so.bspeed = Math.min(520, 360 + L*8);
       so.dmg = Math.min(16, 8 + Math.floor(L/2)); so.want = 240;
     }
     soldiers.push(so);
+  }
+
+  function spawnShelterGuards(b) {
+    const n = state.level >= 4 ? 3 : 2;
+    for (let i=0;i<n;i++) {
+      spawnSoldier("guard");
+      const so = soldiers[soldiers.length-1];
+      const a = rand(0, TAU), rr = Math.max(b.w,b.h) * 0.55 + rand(18, 36);
+      so.x = clamp(b.cx + Math.cos(a)*rr, 20, WORLD.w-20);
+      so.y = clamp(b.cy + Math.sin(a)*rr, 20, WORLD.h-20);
+      so.guard = b;
+    }
+    toast("🚨 SHELTER GUARDS DEPLOYED");
   }
 
   // A coordinated assault wave: a line of soldiers spawns from one edge and
@@ -1042,8 +1071,73 @@
   // ============================================================ DISTRICTS / OBJECTIVES
   function remainingHumans() {
     let n = 0;
-    for (const h of humans) if (h.state === "human" || h.state === "turning") n++;
+    for (const h of humans) if (h.state === "human" || h.state === "turning" || h.state === "hidden") n++;
     return n;
+  }
+  function nearestShelter(x, y, range) {
+    let best = null, bd = range ? range*range : Infinity;
+    for (const b of blocks) {
+      if (b.breached || b.occupants.length >= b.cap) continue;
+      const d = dist2(x,y,b.cx,b.cy);
+      if (d < bd) { bd = d; best = b; }
+    }
+    return best;
+  }
+  function nearestOccupiedShelter(x, y, range) {
+    let best = null, bd = range ? range*range : Infinity;
+    for (const b of blocks) {
+      if (b.breached || !b.occupants.length) continue;
+      const d = dist2(x,y,b.cx,b.cy);
+      if (d < bd) { bd = d; best = b; }
+    }
+    return best;
+  }
+  function enterShelter(h, b) {
+    if (!b || b.breached || h.state !== "human") return false;
+    h.state = "hidden"; h.shelter = b; h.x = b.cx; h.y = b.cy; h.vx = 0; h.vy = 0;
+    b.occupants.push(h);
+    b.pulse = 0;
+    return true;
+  }
+  function damageShelter(b, amount, loud) {
+    if (!b || b.breached) return;
+    b.pulse = 0;
+    if (loud) b.hp -= amount * 4;
+    else b.pressure += amount;
+    if (Math.random() < 0.25 || loud) {
+      particles.push({ x:b.cx+rand(-b.w*0.35,b.w*0.35), y:b.cy+rand(-b.h*0.35,b.h*0.35), vx:rand(-20,20), vy:rand(-20,20), life:0.35, max:0.35, r:rand(2,4), color:"#b6e6b0" });
+    }
+    if (b.hp <= 0) breachShelter(b);
+  }
+  function updateShelterDamage(dt, frenzy) {
+    for (const b of blocks) {
+      if (b.breached) continue;
+      const weighted = dt > 0 ? b.pressure / dt : 0;
+      if (weighted > 1.8) {
+        b.hp -= (weighted - 1.8) * 1.45 * dt * (frenzy ? 1.35 : 1);
+        if (Math.random() < 0.18) particles.push({ x:b.cx+rand(-b.w*0.35,b.w*0.35), y:b.cy+rand(-b.h*0.35,b.h*0.35), vx:rand(-30,30), vy:rand(-30,30), life:0.28, max:0.28, r:rand(2,4), color:"#ffcb3b" });
+      } else if (weighted > 0.1 && Math.random() < 0.03) {
+        particles.push({ x:b.cx+rand(-b.w*0.35,b.w*0.35), y:b.cy+rand(-b.h*0.35,b.h*0.35), vx:0, vy:0, life:0.2, max:0.2, r:2, color:"#b6e6b0" });
+      }
+      b.pressure = 0;
+      if (b.hp <= 0) breachShelter(b);
+    }
+  }
+  function breachShelter(b) {
+    if (b.breached) return;
+    b.breached = true; b.hp = 0; state.sheltersBreached++;
+    const freed = b.occupants.splice(0);
+    for (const h of freed) {
+      h.shelter = null; h.state = Math.random() < 0.72 ? "turning" : "human";
+      h.x = clamp(b.cx + rand(-b.w*0.45,b.w*0.45), 10, WORLD.w-10);
+      h.y = clamp(b.cy + rand(-b.h*0.45,b.h*0.45), 10, WORLD.h-10);
+      h.turn = rand(0.45, 0.9);
+      burst(h.x, h.y, "#9dff7a");
+    }
+    ring(b.cx, b.cy, Math.max(b.w,b.h)*0.55, "#6dff5b");
+    state.dna += Math.min(3, Math.ceil(freed.length / 4));
+    state.threat = clamp(state.threat + freed.length * 0.25, 0, 100);
+    toast(`SHELTER BREACHED — ${freed.length} exposed`);
   }
   function nearestOpenDistrict(x, y, id) {
     let best = null, bd = Infinity;
@@ -1061,7 +1155,7 @@
       let total = 0, taken = 0;
       for (const h of humans) {
         if (h.evacuated || dist2(h.x,h.y,d.x,d.y) > d.r*d.r) continue;
-        if (h.state === "human" || h.state === "turning" || h.state === "zombie") {
+        if (h.state === "human" || h.state === "turning" || h.state === "zombie" || h.state === "hidden") {
           total++;
           if (h.state === "zombie" || h.state === "turning") taken++;
         }
@@ -1100,6 +1194,7 @@
   function updateObjectives(zombieCount, remaining) {
     const lines = [
       { done:zombieCount >= 6, text:`BITE TO START A CHAIN (${Math.min(zombieCount,6)}/6)` },
+      { done:state.sheltersBreached >= 1, text:"SWARM AN OCCUPIED BUILDING" },
       { done:state.districtCaptures >= 1, text:"OVERRUN A NAMED DISTRICT" },
       { done:ABILITIES.some((a, i) => i > 0 && a.unlocked), text:"CLEAR THE LEVEL AND PICK A MUTATION" },
       { done:Object.keys(state.evos).length > 0, text:"COMBINE MUTATIONS TO EVOLVE YOUR STRAIN" },
@@ -1232,9 +1327,13 @@
           if (z.state !== "zombie") continue;
           if (dist2(h.x,h.y,z.x,z.y) < SIGHT*SIGHT) { fx += h.x - z.x; fy += h.y - z.y; threatened = true; }
         }
+        const shelter = nearestShelter(h.x, h.y, panic ? 520 : 230);
         const evacCap = Math.max(6, Math.floor(state.population * 0.12));
         const evac = panic && infectFrac > 0.22 && state.escaped < evacCap && !threatened && nearestOpenDistrict(h.x, h.y, "subway");
-        if (panic && threatened) {
+        const shelterReady = panic && infectFrac > 0.28 && zombieCount >= 14 && h.hideBias < 0.25;
+        if (shelterReady && shelter && threatened && dist2(h.x,h.y,shelter.cx,shelter.cy) < 150*150) {
+          enterShelter(h, shelter);
+        } else if (panic && threatened) {
           h.fleeT = 0.6;
           const fl = Math.hypot(fx,fy) || 1;
           h.vx = (fx/fl) * 122; h.vy = (fy/fl) * 122;  // walkers/runners can now catch fleers
@@ -1246,6 +1345,12 @@
             state.escaped++;
             state.threat = clamp(state.threat + 1.2, 0, 100);
           }
+        } else if (shelter && ((panic && infectFrac > 0.14) || dist2(h.x,h.y,shelter.cx,shelter.cy) < 230*230)) {
+          const sx = shelter.cx - h.x, sy = shelter.cy - h.y, sl = Math.hypot(sx,sy) || 1;
+          const orbit = dist2(h.x,h.y,shelter.cx,shelter.cy) < (shelter.r+18)*(shelter.r+18);
+          h.vx = orbit ? (-sy/sl) * 28 : (sx/sl) * (panic ? 76 : 34);
+          h.vy = orbit ? (sx/sl) * 28 : (sy/sl) * (panic ? 76 : 34);
+          if (shelterReady && dist2(h.x,h.y,shelter.cx,shelter.cy) < (shelter.r*0.7)*(shelter.r*0.7)) enterShelter(h, shelter);
         } else {
           // wander
           h.wanderT -= dt;
@@ -1269,6 +1374,10 @@
         h.x += Math.sin(h.anim)*0.6;
         if (h.turn <= 0) becomeZombie(h);
       }
+      else if (h.state === "hidden") {
+        h.anim += dt * 3;
+        if (!h.shelter || h.shelter.breached) { h.state = "human"; h.shelter = null; }
+      }
       else if (h.state === "zombie") {
         // seek nearest human
         let best = null, bd = Infinity;
@@ -1277,11 +1386,13 @@
           const d = dist2(h.x,h.y,t.x,t.y);
           if (d < bd) { bd = d; best = t; }
         }
+        const shelterTarget = nearestOccupiedShelter(h.x, h.y, best ? 420 : 900);
         // Chase a nearby victim; otherwise surge toward Patient Zero so the
         // horde reads as one growing swarm around you instead of scattering.
         let tx, ty;
         const FOLLOW = 520;
-        if (best && bd < FOLLOW*FOLLOW) { tx = best.x; ty = best.y; }
+        if (shelterTarget && (!best || dist2(h.x,h.y,shelterTarget.cx,shelterTarget.cy) < bd * 1.35)) { tx = shelterTarget.cx; ty = shelterTarget.cy; }
+        else if (best && bd < FOLLOW*FOLLOW) { tx = best.x; ty = best.y; }
         else { tx = player.x; ty = player.y; }
         const dx = tx - h.x, dy = ty - h.y, dl = Math.hypot(dx,dy) || 1;
         const packBonus = state.mods.packspeed * 0.12 + (state.evos.feralPack ? 0.10 : 0);
@@ -1293,8 +1404,12 @@
         h.anim += dt * 8;
         // infect on contact
         if (best && bd < (h.r + best.r + 1)*(h.r + best.r + 1)) startTurn(best);
+        if (shelterTarget && dist2(h.x,h.y,shelterTarget.cx,shelterTarget.cy) < (h.r+shelterTarget.r)*(h.r+shelterTarget.r)) {
+          damageShelter(shelterTarget, dt * (h.ztype === "brute" ? 1.6 : 0.75), false);
+        }
       }
     }
+    updateShelterDamage(dt, frenzy);
 
     // ---- soldiers (more, faster, and tougher each level)
     state.soldierTimer -= dt;
@@ -1325,6 +1440,19 @@
         state.waveTimer = Math.max(9, 20 - state.level*0.7);
         spawnWave(Math.min(13, 4 + Math.floor(state.level*1.1)));
       }
+    }
+
+    // responders protect occupied shelters, forcing the horde to overwhelm
+    // defended buildings instead of just waiting for civilians to reappear.
+    state.guardTimer -= dt;
+    if (state.level >= 2 && state.panicked && state.threat > 8 && !state.boss && state.guardTimer <= 0 && soldiers.length < maxSoldiers + 3) {
+      state.guardTimer = Math.max(5, 11 - state.level * 0.35);
+      let target = null, occ = 0;
+      for (const b of blocks) {
+        if (b.breached || b.guarded || b.occupants.length < 2) continue;
+        if (b.occupants.length > occ) { occ = b.occupants.length; target = b; }
+      }
+      if (target) { target.guarded = true; spawnShelterGuards(target); }
     }
 
     // boss-level: keep a trickle of civilians so the horde can be rebuilt
@@ -1389,11 +1517,21 @@
 
     for (const so of soldiers) {
       // hunters lock onto the player; grunts pick the nearest zombie or player
-      let tx, ty;
+      let tx, ty, ax, ay;
+      so.guardIdle = false;
       if (so.type === "hunter") {
         tx = player.x + player.vx * 0.18; ty = player.y + player.vy * 0.18; // lead the shot
       } else if (so.assault) {
         tx = player.x; ty = player.y; // wave members advance on you as a front
+      } else if (so.type === "guard" && so.guard && !so.guard.breached) {
+        tx = so.guard.cx; ty = so.guard.cy;
+        let td = Infinity;
+        for (const h of humans) {
+          if (h.state !== "zombie") continue;
+          const d = dist2(so.x,so.y,h.x,h.y);
+          if (d < td) { td = d; ax = h.x; ay = h.y; }
+        }
+        if (td > 460*460) { ax = tx; ay = ty; so.guardIdle = true; }
       } else {
         tx = player.x; ty = player.y;
         let td = dist2(so.x,so.y,player.x,player.y);
@@ -1404,15 +1542,16 @@
         }
       }
       const dx = tx - so.x, dy = ty - so.y, dl = Math.hypot(dx,dy) || 1;
+      const adx = (ax == null ? tx : ax) - so.x, ady = (ay == null ? ty : ay) - so.y, adl = Math.hypot(adx,ady) || 1;
       const want = so.want;
       const move = dl > want ? 1 : (dl < want-60 ? -0.6 : 0);
       // advance/retreat plus a little strafe
       so.x = clamp(so.x + (dx/dl)*so.speed*move*dt + (-dy/dl)*22*dt, 10, WORLD.w-10);
       so.y = clamp(so.y + (dy/dl)*so.speed*move*dt + (dx/dl)*22*dt, 10, WORLD.h-10);
-      so.aim = Math.atan2(dy, dx);
+      so.aim = Math.atan2(ady, adx);
       if (so.muzzle > 0) so.muzzle -= dt;
       so.cool -= dt;
-      if (so.cool <= 0 && dl < so.want + 180) {
+      if (so.cool <= 0 && adl < so.want + 220 && !so.guardIdle) {
         so.cool = so.fireRate * (1 - threatN*0.3);
         const spread = rand(-0.05,0.05);
         bullets.push({ x: so.x + Math.cos(so.aim)*14, y: so.y + Math.sin(so.aim)*14,
@@ -1586,7 +1725,7 @@
     // ---- level-clear check: clearing the last stragglers is tedious, so the
     //      level ends once ~92% of the city is infected (the rest "escape").
     let remaining = 0;
-    for (const h of humans) if (h.state === "human" || h.state === "turning") remaining++;
+    for (const h of humans) if (h.state === "human" || h.state === "turning" || h.state === "hidden") remaining++;
     if (state.isBoss) {
       // boss levels end only when the Behemoth is down
       if (state.bossSpawned && !state.boss) return levelComplete();
@@ -1655,10 +1794,34 @@
     // buildings (only those near view)
     for (const b of blocks) {
       if (b.x > cam.x + W || b.x+b.w < cam.x || b.y > cam.y + H || b.y+b.h < cam.y) continue;
-      ctx.fillStyle = `rgba(255,255,255,${b.shade})`;
+      b.pulse += 0.016;
+      const occ = b.occupants.length;
+      const dmg = 1 - clamp(b.hp / b.maxHp, 0, 1);
+      ctx.fillStyle = b.breached ? "rgba(55,45,38,0.34)" : `rgba(${occ ? 255 : 220},${occ ? 235 : 255},${occ ? 160 : 255},${b.shade + occ*0.018})`;
       roundRect(b.x, b.y, b.w, b.h, 8); ctx.fill();
-      ctx.strokeStyle = "rgba(120,160,120,0.18)";
+      ctx.strokeStyle = b.breached ? "rgba(255,59,78,0.28)" : (occ ? "rgba(255,203,59,0.55)" : "rgba(120,160,120,0.18)");
       ctx.lineWidth = 2; ctx.stroke();
+      if (occ || b.breached || dmg > 0.2) {
+        ctx.fillStyle = "rgba(0,0,0,0.55)";
+        roundRect(b.cx - 26, b.cy - 13, 52, 26, 5); ctx.fill();
+        ctx.fillStyle = b.breached ? "#ff3b4e" : "#ffcb3b";
+        ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
+        ctx.fillText(b.breached ? "OPEN" : `HIDE ${occ}`, b.cx, b.cy - 1);
+        if (!b.breached) {
+          ctx.fillStyle = "rgba(255,255,255,0.14)";
+          ctx.fillRect(b.cx - 22, b.cy + 6, 44, 4);
+          ctx.fillStyle = dmg > 0.65 ? "#ff3b4e" : "#6dff5b";
+          ctx.fillRect(b.cx - 22, b.cy + 6, 44 * clamp(b.hp/b.maxHp,0,1), 4);
+        }
+      }
+      if (dmg > 0.15 && !b.breached) {
+        ctx.strokeStyle = "rgba(255,59,78,0.45)"; ctx.lineWidth = 2;
+        const cracks = Math.ceil(dmg * 5);
+        for (let c=0;c<cracks;c++) {
+          const x = b.x + b.w*(0.18 + c*0.14), y = b.y + b.h*(0.25 + (c%3)*0.18);
+          ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x+rand(-10,12), y+rand(12,28)); ctx.stroke();
+        }
+      }
     }
 
     // gore decals on the ground (under everything)
@@ -1724,6 +1887,7 @@
 
     // humans / zombies
     for (const h of humans) {
+      if (h.state === "hidden") continue;
       if (h.x < cam.x-30 || h.x > cam.x+W+30 || h.y < cam.y-30 || h.y > cam.y+H+30) continue;
       drawPerson(h);
     }
@@ -1831,9 +1995,9 @@
     for (const h of humans) if (h.state === "human") ctx.fillRect(mmX + h.x*sx - 0.5, mmY + h.y*sy - 0.5, 1.3, 1.3);
     ctx.fillStyle = "#6dff5b";
     for (const h of humans) if (h.state === "zombie") ctx.fillRect(mmX + h.x*sx - 0.5, mmY + h.y*sy - 0.5, 1.3, 1.3);
-    // soldiers (grunts dim red, hunters bright red)
+    // soldiers (grunts dim red, guards amber, hunters bright red)
     for (const so of soldiers) {
-      ctx.fillStyle = so.type === "hunter" ? "#ff3b4e" : "#b14655";
+      ctx.fillStyle = so.type === "hunter" ? "#ff3b4e" : (so.type === "guard" ? "#ffcb3b" : "#b14655");
       ctx.fillRect(mmX + so.x*sx - 1, mmY + so.y*sy - 1, 2, 2);
     }
     // rival stalkers
@@ -1896,6 +2060,7 @@
 
   function drawSoldier(so) {
     const hunter = so.type === "hunter";
+    const guard = so.type === "guard";
     ctx.save();
     ctx.translate(so.x, so.y);
     // hunters wear a menacing red marker so you can read the threat
@@ -1906,10 +2071,14 @@
       ctx.setLineDash([]);
     }
     // body
-    ctx.fillStyle = hunter ? "#5a2630" : "#3a4a2e";
+    if (guard && so.guard && !so.guard.breached) {
+      ctx.strokeStyle = "rgba(255,203,59,0.55)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, 0, so.r + 6, 0, TAU); ctx.stroke();
+    }
+    ctx.fillStyle = hunter ? "#5a2630" : (guard ? "#5a4a26" : "#3a4a2e");
     ctx.beginPath(); ctx.ellipse(0, 2, so.r*0.9, so.r*1.05, 0, 0, TAU); ctx.fill();
     // helmet
-    ctx.fillStyle = hunter ? "#3a161d" : "#27331f";
+    ctx.fillStyle = hunter ? "#3a161d" : (guard ? "#3d3218" : "#27331f");
     ctx.beginPath(); ctx.arc(0, -so.r*0.6, so.r*0.6, 0, TAU); ctx.fill();
     // infection overlay as the horde drags him under
     const inf = so.infect || 0;
