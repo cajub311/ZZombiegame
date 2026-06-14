@@ -599,7 +599,7 @@
     rivalTimer: 0, rivalsAnnounced: false, hitStop: 0, infFrac: 0,
     districtCaptures: 0, escaped: 0, objectiveText: "", objectiveStep: 0,
     sheltersBreached: 0,
-    noProgressT: 0, progressMark: 0, hintTarget: null, hintPulseT: 0, hintToastT: 0, directorAidT: 0,
+    noProgressT: 0, progressMark: 0, hintTarget: null, hintPulseT: 0, hintToastT: 0, directorAidT: 0, packSurgeT: 0,
   };
   const SKILL_TREES = {
     patient: {
@@ -611,6 +611,8 @@
         { id:"carapace", name:"Carapace", max:5, desc:"+25 HP and bullet resistance" },
         { id:"regeneration", name:"Regeneration", max:5, desc:"heal when victims rise" },
         { id:"venom", name:"Venom", max:5, desc:"+ spit, acid, turn speed" },
+        { id:"predatoryLeap", name:"Predatory Leap", max:3, desc:"bite cooldown drops and lunge hits wider" },
+        { id:"viralScream", name:"Viral Scream", max:3, desc:"biting pings prey and scares crowds" },
         { id:"apexPredator", name:"Apex Predator", max:1, desc:"bite chains up to 2 nearby humans", capstone:true, requires:14 },
         { id:"unkillableStrain", name:"Unkillable Strain", max:1, desc:"once per level, survive lethal damage", capstone:true, requires:14 },
         { id:"acidMaw", name:"Acid Maw", max:1, desc:"bites melt armor and barricades", capstone:true, requires:14 },
@@ -625,6 +627,8 @@
         { id:"broodSeed", name:"Brood Seed", max:5, desc:"start with more victims turning" },
         { id:"siegeInstinct", name:"Siege Instinct", max:5, desc:"+ swarm shelter damage" },
         { id:"specialStrains", name:"Special Strains", max:5, desc:"more runners, leapers, brutes" },
+        { id:"deathDrum", name:"Death Drum", max:3, desc:"new zombies briefly pull the pack forward" },
+        { id:"meatWave", name:"Meat Wave", max:3, desc:"larger horde means stronger soldier takedowns" },
         { id:"greenTide", name:"Green Tide", max:1, desc:"horde surges toward your target", capstone:true, requires:14 },
         { id:"siegeHost", name:"Siege Host", max:1, desc:"shelters collapse faster under swarm", capstone:true, requires:14 },
         { id:"mutantArmy", name:"Mutant Army", max:1, desc:"special infected chance rises sharply", capstone:true, requires:14 },
@@ -854,8 +858,8 @@
 
     if (i === 0) { // BITE — lunge toward the cursor and chomp what's in front
       const ang = aimAngle();
-      const reach = 1 + state.mods.apex * 0.45 + skillValue("adrenal") * 0.045 + skillValue("muscle") * 0.04 + state.mods.acid * 0.035 + skillValue("acidMaw") * 0.12 + (state.evos.alphaBite ? 0.35 : 0) + Math.min(0.5, state.startCount / 600);
-      player.lungeT = 0.16; player.lungeA = ang; player.lungeSpeed = 600 * reach;
+      const reach = 1 + state.mods.apex * 0.45 + skillValue("adrenal") * 0.045 + skillValue("muscle") * 0.04 + skillValue("predatoryLeap") * 0.1 + state.mods.acid * 0.035 + skillValue("acidMaw") * 0.12 + (state.evos.alphaBite ? 0.35 : 0) + Math.min(0.5, state.startCount / 600);
+      player.lungeT = 0.16 + skillValue("predatoryLeap") * 0.015; player.lungeA = ang; player.lungeSpeed = 600 * reach;
       const biteR = 34 * reach;
       const bx = player.x + Math.cos(ang)*18, by = player.y + Math.sin(ang)*18;
       let biteHit = false;
@@ -884,6 +888,22 @@
           ring(bx, by, 72, "#ffcb3b");
         }
       }
+      if (biteHit && skillValue("viralScream")) {
+        const sr = 120 + skillValue("viralScream") * 42;
+        let scared = 0;
+        for (const h of humans) {
+          if (h.state !== "human" || dist2(h.x,h.y,bx,by) > sr*sr) continue;
+          h.fleeT = 0.9;
+          h.wanderA = Math.atan2(h.y - by, h.x - bx);
+          if (Math.random() < 0.10 + skillValue("viralScream") * 0.04) startTurn(h);
+          scared++;
+        }
+        if (scared) {
+          ring(bx, by, sr, "#ffcb3b");
+          addFloat(bx, by - 38, "SCREAM", "#ffcb3b", 16);
+          pulseGuidanceTarget();
+        }
+      }
       for (const rv of rivals) if (dist2(bx,by,rv.x,rv.y) < (biteR+rv.r)*(biteR+rv.r)) { rv.hp -= 3; blood(rv.x,rv.y); biteHit = true; }
       // a connecting bite kicks the screen so chomps feel like they land
       if (biteHit) state.shake = Math.max(state.shake, 5);
@@ -897,7 +917,7 @@
         });
       }
       burst(bx, by, "#9dff7a"); AudioFX.bite();
-      a.cd = a.max;
+      a.cd = Math.max(0.22, a.max - skillValue("predatoryLeap") * 0.055);
     } else if (i === 1) { // toxic spit
       const ang = aimAngle();
       for (let k = -1; k <= 1; k++) {
@@ -1002,7 +1022,7 @@
     state.statPoints = 0;
     state.skills = {};
     state.evos = {};
-    state.noProgressT = 0; state.progressMark = 0; state.hintTarget = null; state.hintPulseT = 0; state.hintToastT = 0; state.directorAidT = 0; state.greenTideOn = false;
+    state.noProgressT = 0; state.progressMark = 0; state.hintTarget = null; state.hintPulseT = 0; state.hintToastT = 0; state.directorAidT = 0; state.greenTideOn = false; state.packSurgeT = 0;
     state.biteN = 0; state.trailT = 0;
     ABILITIES.forEach((a, i) => { a.unlocked = (i === 0); a.cd = 0; });
     player = {
@@ -1058,7 +1078,7 @@
     state.isBoss = boss;
     state.boss = null; state.bossSpawned = false; state.bossReward = false; state.bossRewardType = null;
     state.unkillableUsed = false;
-    state.noProgressT = 0; state.progressMark = 0; state.hintTarget = null; state.hintPulseT = 0; state.hintToastT = 0; state.directorAidT = 0; state.greenTideOn = false;
+    state.noProgressT = 0; state.progressMark = 0; state.hintTarget = null; state.hintPulseT = 0; state.hintToastT = 0; state.directorAidT = 0; state.greenTideOn = false; state.packSurgeT = 0;
     state.waveTimer = Math.max(8, 18 - Math.sqrt(state.level) * 1.6);
     state.civReTimer = 0;
 
@@ -1331,6 +1351,10 @@
     // infection chain: keep the outbreak rolling for biomass payouts
     if (Math.random() < 0.5) decal(h.x + rand(-4,4), h.y + rand(-4,4), rand(3,6), "#1f5a16"); // infection stain
     if (state.mods.lifesteal) player.hp = clamp(player.hp + state.mods.lifesteal * 0.35, 0, state.maxHp); // Vampiric Bite
+    if (skillValue("deathDrum")) {
+      state.packSurgeT = Math.max(state.packSurgeT || 0, 0.65 + skillValue("deathDrum") * 0.22);
+      if (state.totalInfected % 8 === 0) addFloat(h.x, h.y - 24, "PACK SURGE", "#6dff5b", 15);
+    }
     state.combo++; state.comboT = 2.4;
     if (state.combo % 15 === 0) {
       state.dna += 3;
@@ -1786,6 +1810,7 @@
     }
 
     if (frenzyT > 0) frenzyT -= dt;
+    if (state.packSurgeT > 0) state.packSurgeT -= dt;
     const frenzy = frenzyT > 0;
     if (skillValue("greenTide")) {
       const phase = Math.sin(state.time * 1.8);
@@ -1829,7 +1854,11 @@
         const evacCap = Math.max(5, Math.floor(state.population * 0.09));
         const evac = panic && state.level >= 2 && infectFrac > 0.30 && state.escaped < evacCap && !threatened && nearestOpenDistrict(h.x, h.y, "subway");
         const shelterReady = panic && h.hideBias < 0.32;
-        if (shelterReady && shelter && threatened && dist2(h.x,h.y,shelter.cx,shelter.cy) < 150*150) {
+        if (h.fleeT > 0) {
+          h.fleeT -= dt;
+          h.vx = Math.cos(h.wanderA) * 150;
+          h.vy = Math.sin(h.wanderA) * 150;
+        } else if (shelterReady && shelter && threatened && dist2(h.x,h.y,shelter.cx,shelter.cy) < 150*150) {
           enterShelter(h, shelter);
         } else if (panic && threatened) {
           h.fleeT = 0.6;
@@ -1898,7 +1927,7 @@
         else if (best && bd < FOLLOW*FOLLOW) { tx = best.x; ty = best.y; }
         else { tx = player.x; ty = player.y; }
         const dx = tx - h.x, dy = ty - h.y, dl = Math.hypot(dx,dy) || 1;
-        const packBonus = state.mods.packspeed * 0.12 + skillValue("swarmSpeed") * 0.055 + packMind * 0.025 + skillValue("greenTide") * (Math.sin(state.time * 1.8) > 0.55 ? 0.18 : 0) + (state.evos.feralPack ? 0.10 : 0);
+        const packBonus = state.mods.packspeed * 0.12 + skillValue("swarmSpeed") * 0.055 + packMind * 0.025 + skillValue("greenTide") * (Math.sin(state.time * 1.8) > 0.55 ? 0.18 : 0) + (state.packSurgeT > 0 ? skillValue("deathDrum") * 0.07 : 0) + (state.evos.feralPack ? 0.10 : 0);
         const base = (h.speed || 110) * (1 + packBonus);
         if (h.ztype === "leaper") {
           h.leapCd = (h.leapCd || 0) - dt;
@@ -2193,7 +2222,8 @@
       if (playerOn) attackers += 2; // patient zero's bite is especially potent
       if (attackers > 0) {
         // swarms (3+) pull a soldier under fast; a lone biter takes a while
-        so.infect = (so.infect || 0) + attackers * dt * (attackers >= 3 ? 1.1 : 0.35);
+        const meatWave = 1 + skillValue("meatWave") * Math.min(0.18, zombieCount / 420);
+        so.infect = (so.infect || 0) + attackers * dt * (attackers >= 3 ? 1.1 : 0.35) * meatWave;
         if (Math.random() < 0.25) blood(so.x, so.y);
         if (so.infect >= 1) so.converted = true;
       } else {

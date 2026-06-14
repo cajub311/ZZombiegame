@@ -1,5 +1,5 @@
 // Patient Zero service worker — offline caching for the installed app.
-const CACHE = "pz-v15";
+const CACHE = "pz-v16";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
@@ -13,11 +13,27 @@ self.addEventListener("activate", e => {
 });
 self.addEventListener("fetch", e => {
   if (e.request.method !== "GET") return;
-  e.respondWith(
-    caches.match(e.request).then(hit => hit || fetch(e.request).then(res => {
-      const copy = res.clone();
-      caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
-      return res;
-    }).catch(() => caches.match("./index.html")))
-  );
+  const url = new URL(e.request.url);
+  const isHTML = e.request.mode === "navigate" ||
+                 url.pathname.endsWith("/") || url.pathname.endsWith("index.html");
+  if (isHTML) {
+    // network-first for the game itself: always serve the latest build, but
+    // fall back to cache when offline so the installed app still launches.
+    e.respondWith(
+      fetch(e.request).then(res => {
+        const copy = res.clone();
+        caches.open(CACHE).then(c => c.put("./index.html", copy)).catch(() => {});
+        return res;
+      }).catch(() => caches.match(e.request).then(hit => hit || caches.match("./index.html")))
+    );
+  } else {
+    // other assets rarely change: cache-first.
+    e.respondWith(
+      caches.match(e.request).then(hit => hit || fetch(e.request).then(res => {
+        const copy = res.clone();
+        caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
+        return res;
+      }))
+    );
+  }
 });
