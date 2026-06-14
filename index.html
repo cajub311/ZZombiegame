@@ -117,6 +117,13 @@
   .btn:active { transform: translateY(8px); box-shadow: 0 2px 0 #145210, 0 4px 12px rgba(109,255,91,0.3); }
 
   .stats { margin: 18px 0 4px; display: flex; gap: 26px; flex-wrap: wrap; justify-content: center; }
+  #endScreen .stats {
+    width: min(680px, 100%);
+    padding: 12px;
+    background: rgba(5, 14, 7, 0.58);
+    border: 1px solid rgba(109,255,91,0.12);
+    border-radius: 12px;
+  }
   .stat { min-width: 110px; }
   .stat .num { font-size: 40px; font-weight: 900; color: var(--inf); text-shadow: 0 0 14px rgba(109,255,91,0.4); }
   .stat .lbl { font-size: 12px; letter-spacing: 1px; color: #8fc98a; text-transform: uppercase; }
@@ -124,6 +131,71 @@
   .verdict.win { color: var(--inf); text-shadow: 0 0 20px rgba(109,255,91,0.7); }
   .verdict.lose { color: var(--blood); text-shadow: 0 0 20px rgba(255,59,78,0.6); }
   .hint { margin-top: 14px; font-size: 13px; color: #7fae7a; }
+  .install-panel {
+    width: min(560px, 100%);
+    margin-top: 14px;
+    padding: 12px 14px;
+    background: rgba(5, 14, 7, 0.72);
+    border: 1px solid rgba(255,203,59,0.34);
+    border-radius: 12px;
+    color: #d6f7d0;
+    font-size: 13px;
+    line-height: 1.35;
+    text-align: left;
+    box-shadow: inset 0 0 30px rgba(255,203,59,0.03);
+  }
+  .install-panel.installed { display: none; }
+  .install-panel b { color: var(--warn); }
+  .install-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .install-btn {
+    appearance: none;
+    border: 1px solid rgba(255,203,59,0.58);
+    border-radius: 10px;
+    background: rgba(255,203,59,0.14);
+    color: var(--warn);
+    cursor: pointer;
+    flex: 0 0 auto;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.8px;
+    padding: 10px 12px;
+    text-transform: uppercase;
+  }
+  .install-help { margin-top: 8px; color: #9adf93; font-size: 12px; }
+  .end-recap {
+    width: min(680px, 100%);
+    margin-top: 16px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(90px, 1fr));
+    gap: 8px;
+  }
+  .recap-tile {
+    padding: 10px 8px;
+    background: rgba(5, 14, 7, 0.78);
+    border: 1px solid rgba(109,255,91,0.18);
+    border-radius: 10px;
+  }
+  .recap-tile b { display: block; color: var(--warn); font-size: 18px; line-height: 1; }
+  .recap-tile span { display: block; margin-top: 5px; color: #9adf93; font-size: 10px; letter-spacing: 0.7px; text-transform: uppercase; }
+  .build-chips {
+    width: min(680px, 100%);
+    margin-top: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 7px;
+  }
+  .build-chip {
+    padding: 7px 9px;
+    border: 1px solid rgba(109,255,91,0.22);
+    border-radius: 999px;
+    background: rgba(8,18,10,0.78);
+    color: #d6f7d0;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+  }
 
   /* ---------- HUD ---------- */
   #hud {
@@ -345,6 +417,9 @@
     .title { font-size: clamp(36px, 12vw, 60px); }
     .card { margin-top: 14px; padding: 14px 16px; }
     .card h2 { margin-bottom: 8px; }
+    .install-panel { font-size: 12.5px; }
+    .install-row { align-items: flex-start; flex-direction: column; gap: 9px; }
+    .install-btn { width: 100%; min-height: 42px; }
     .controls { gap: 6px 14px; font-size: 13px; }
     .mobile-controls {
       display: grid;
@@ -423,6 +498,20 @@
       max-width: 320px;
     }
     .controls { grid-template-columns: 1fr; }
+    #endScreen .stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      padding: 10px 8px;
+    }
+    #endScreen .stat { min-width: 0; }
+    #endScreen .stat .num { font-size: clamp(24px, 9vw, 34px); }
+    #endScreen .stat .lbl { font-size: 9px; letter-spacing: 0.4px; }
+    #restartBtn { width: min(100%, 320px); }
+    .end-recap { grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 8px; }
+    .recap-tile { padding: 9px 8px; }
+    .build-chips { gap: 6px; }
+    .build-chip { font-size: 10.5px; }
     #draftCards {
       display: grid;
       grid-template-columns: 1fr;
@@ -519,6 +608,13 @@
   <div class="subtitle">YOU ARE THE OUTBREAK</div>
   <div class="subtitle" id="bestLine" style="font-size:13px; color:#ffcb3b; margin-top:4px; min-height:16px;"></div>
   <button class="btn" id="startBtn">Begin Outbreak</button>
+  <div class="install-panel" data-install-panel>
+    <div class="install-row">
+      <div><b>Android app:</b> install Patient Zero for fullscreen offline play.</div>
+      <button class="install-btn" type="button" data-install-btn>Install app</button>
+    </div>
+    <div class="install-help" data-install-help>In Android Chrome, open the menu and choose <b>Install app</b> or <b>Add to Home screen</b>.</div>
+  </div>
   <div class="card">
     <h2>Mission</h2>
     <div style="font-size:14px; line-height:1.6; color:#cdeec9; text-align:left;">
@@ -557,8 +653,17 @@
     <div class="stat"><div class="num" id="endLevel">1</div><div class="lbl">Level Reached</div></div>
     <div class="stat"><div class="num" id="endTime">0:00</div><div class="lbl">Survived</div></div>
   </div>
+  <div id="endRecap" class="end-recap"></div>
+  <div id="endBuild" class="build-chips"></div>
   <div class="hint" id="endHint"></div>
   <button class="btn" id="restartBtn">Reinfect</button>
+  <div class="install-panel" data-install-panel>
+    <div class="install-row">
+      <div><b>Android app:</b> install Patient Zero for fullscreen offline play.</div>
+      <button class="install-btn" type="button" data-install-btn>Install app</button>
+    </div>
+    <div class="install-help" data-install-help>In Android Chrome, the menu may say <b>Install app</b> or <b>Add to Home screen</b>.</div>
+  </div>
 </div>
 
 <!-- Draft screen (between levels) -->
@@ -3256,20 +3361,86 @@
     if (b && b.level) el("bestLine").textContent = `★ BEST  Level ${b.level} · ${b.infected} infected · horde ${b.horde||0}`;
   }
 
+  let deferredInstallPrompt = null;
+  function isStandaloneApp() {
+    return window.matchMedia?.("(display-mode: fullscreen)")?.matches ||
+           window.matchMedia?.("(display-mode: standalone)")?.matches ||
+           window.navigator.standalone;
+  }
+  function setInstallHelp(msg) {
+    document.querySelectorAll("[data-install-help]").forEach(n => { n.innerHTML = msg; });
+  }
+  function updateInstallPanels() {
+    const installed = isStandaloneApp();
+    document.querySelectorAll("[data-install-panel]").forEach(n => n.classList.toggle("installed", !!installed));
+    const label = "Install app";
+    document.querySelectorAll("[data-install-btn]").forEach(btn => { btn.textContent = label; });
+  }
+  async function installApp() {
+    if (isStandaloneApp()) {
+      setInstallHelp("Already installed. Launch from your Android home screen for fullscreen play.");
+      updateInstallPanels();
+      return;
+    }
+    if (deferredInstallPrompt) {
+      const promptEvent = deferredInstallPrompt;
+      deferredInstallPrompt = null;
+      promptEvent.prompt();
+      try {
+        const choice = await promptEvent.userChoice;
+        setInstallHelp(choice && choice.outcome === "accepted"
+          ? "Installed. Open from your Android home screen for fullscreen offline play."
+          : "If the prompt disappeared, open Chrome menu and choose <b>Install app</b> or <b>Add to Home screen</b>.");
+      } catch (e) {
+        setInstallHelp("Open Chrome menu and choose <b>Install app</b> or <b>Add to Home screen</b>.");
+      }
+      updateInstallPanels();
+      return;
+    }
+    setInstallHelp("Android Chrome may not show the prompt here. Tap the <b>⋮</b> menu and choose <b>Install app</b> or <b>Add to Home screen</b>.");
+  }
+  window.addEventListener("beforeinstallprompt", e => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    setInstallHelp("Ready to install. Tap the button, or use Chrome menu: <b>Install app</b> / <b>Add to Home screen</b>.");
+    updateInstallPanels();
+  });
+  window.addEventListener("appinstalled", () => {
+    deferredInstallPrompt = null;
+    setInstallHelp("Installed. Open Patient Zero from your Android home screen.");
+    updateInstallPanels();
+  });
+  window.matchMedia?.("(display-mode: fullscreen)")?.addEventListener?.("change", updateInstallPanels);
+
+  function buildSummaryChips() {
+    const chips = [];
+    for (const p of POWERUPS) {
+      const n = stackCount(p);
+      if (n > 0) chips.push(`${p.icon} ${p.name}${n > 1 ? " x" + n : ""}`);
+    }
+    for (const key of Object.keys(state.evos || {})) if (state.evos[key]) {
+      chips.push("★ " + key.replace(/([A-Z])/g, " $1").replace(/^./, c => c.toUpperCase()));
+    }
+    return chips.slice(0, 10);
+  }
+
   function endGame() {
     state.phase = "end";
     el("hud").classList.add("hidden");
     el("abilities").classList.add("hidden");
     el("objective").classList.add("hidden");
     const best = loadBest();
-    const record = state.level > (best.level||0) || state.totalInfected > (best.infected||0);
+    const levelRecord = state.level > (best.level||0);
+    const infectedRecord = state.totalInfected > (best.infected||0);
+    const record = levelRecord || infectedRecord;
     saveBest({
       level: Math.max(state.level, best.level||0),
       infected: Math.max(state.totalInfected, best.infected||0),
       horde: Math.max(state.peakHorde, best.horde||0),
     });
+    showBest();
     const v = el("verdict");
-    v.textContent = record ? "NEW RECORD!" : "OUTBREAK CONTAINED";
+    v.textContent = record ? (levelRecord && infectedRecord ? "DOUBLE RECORD!" : "NEW RECORD!") : "OUTBREAK CONTAINED";
     v.className = "verdict " + (record ? "win" : "lose");
     el("endInfected").textContent = state.totalInfected;
     el("endLevel").textContent = state.level;
@@ -3283,10 +3454,27 @@
     else if (state.level >= 4) tier = "A regional outbreak, contained at great cost.";
     else                       tier = "A local scare. The CDC is still nervous.";
     const nb = loadBest();
+    const recap = [
+      ["Peak Horde", state.peakHorde],
+      ["Soldiers Turned", state.turnedSoldiers],
+      ["Shelters Breached", state.sheltersBreached || 0],
+      ["Escaped", state.escaped || 0],
+    ];
+    el("endRecap").innerHTML = recap.map(([label, value]) => `<div class="recap-tile"><b>${value}</b><span>${label}</span></div>`).join("");
+    const chips = buildSummaryChips();
+    el("endBuild").innerHTML = chips.length
+      ? chips.map(txt => `<span class="build-chip">${txt}</span>`).join("")
+      : `<span class="build-chip">No mutations drafted</span>`;
+    const recordText = levelRecord && infectedRecord ? "New level and infection records." :
+      levelRecord ? "New level record." :
+      infectedRecord ? "New infection record." :
+      `Best remains Lv ${nb.level || 1} · ${nb.infected || 0} infected.`;
+    const nextLevel = Math.max((nb.level || 1) + 1, state.level + 1);
+    const nextInfected = Math.max((nb.infected || 0) + 10, state.totalInfected + 10);
     el("endHint").textContent =
-      `${tier}  Peak horde ${state.peakHorde}, ${state.turnedSoldiers} soldiers turned.  ` +
-      `★ Best: Lv ${nb.level} · ${nb.infected} infected.`;
+      `${tier} ${recordText} Next target: reach Lv ${nextLevel} or ${nextInfected} infected.`;
     el("endScreen").classList.remove("hidden");
+    updateInstallPanels();
   }
 
   el("rerollBtn").addEventListener("click", () => {
@@ -3295,6 +3483,8 @@
   });
   el("startBtn").addEventListener("click", startGame);
   el("restartBtn").addEventListener("click", startGame);
+  document.querySelectorAll("[data-install-btn]").forEach(btn => btn.addEventListener("click", installApp));
+  updateInstallPanels();
   showBest();
 
   // ============================================================ LOOP
