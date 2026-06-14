@@ -965,10 +965,10 @@
     const shelterScale = Math.min(LEVEL_SCALING.shelterHpCap, 1 + Math.max(0, state.level - 1) * 0.018 + (bossTier(state.level) - 1) * 0.18);
     const baseHp = Math.round(clamp(58 + (w*h) / 1200, 120, 220) * shelterScale);
     const hp = baseHp + 12; // every building starts with one barricade layer of its own
-    const cap = Math.min(34, 18 + Math.floor((w*h) / 6500));
-    // The solid/attackable circle now matches the building you actually see,
-    // instead of a giant invisible ring that held you out of reach.
-    const rad = Math.round((w + h) / 4);
+    const cap = Math.min(48, 26 + Math.floor((w*h) / 5200)); // bigger buildings shelter more people
+    // The solid/attackable circle matches the building you actually see — now a
+    // bit larger so it holds a real crowd, while staying reachable and breakable.
+    const rad = Math.round((w + h) / 4 * 1.28);
     const b = {
       id, name, role, color, cx, cy,
       r: rad, w: rad*2, h: rad*2, x: cx - rad, y: cy - rad,
