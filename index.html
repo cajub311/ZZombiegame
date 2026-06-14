@@ -32,11 +32,13 @@
     user-select: none;
     -webkit-user-select: none;
     touch-action: none;
+    overscroll-behavior: none;
   }
   #game {
     display: block;
     width: 100vw;
     height: 100vh;
+    height: 100dvh;
     cursor: crosshair;
   }
 
@@ -44,6 +46,8 @@
   .overlay {
     position: fixed;
     inset: 0;
+    width: 100%;
+    min-height: 100dvh;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -56,6 +60,7 @@
     overflow-y: auto;                /* scroll if content is taller than screen */
     touch-action: pan-y;             /* allow finger-scroll on the menus (canvas stays locked) */
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
   }
   .overlay.hidden { opacity: 0; pointer-events: none; }
 
@@ -68,6 +73,7 @@
     text-shadow: 0 0 18px rgba(109,255,91,0.6), 0 6px 0 #0a2e0a;
     animation: pulse 2.4s ease-in-out infinite;
   }
+  .title.still { animation: none; transform: none; filter: none; }
   @keyframes pulse {
     0%,100% { transform: scale(1); filter: drop-shadow(0 0 8px rgba(109,255,91,0.4)); }
     50% { transform: scale(1.03); filter: drop-shadow(0 0 22px rgba(109,255,91,0.8)); }
@@ -86,6 +92,7 @@
   .card h2 { color: var(--inf); font-size: 15px; letter-spacing: 2px; margin-bottom: 12px; text-transform: uppercase; }
   .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; font-size: 14px; text-align: left; }
   .controls b { color: var(--warn); }
+  .mobile-controls { display: none; }
   .powerlist { margin-top: 14px; font-size: 13px; color: #b6e6b0; line-height: 1.7; text-align: left; }
   .powerlist span { font-weight: bold; }
 
@@ -122,7 +129,7 @@
   #hud {
     position: fixed;
     top: 0; left: 0; right: 0;
-    padding: 12px 16px;
+    padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
@@ -160,7 +167,7 @@
 
   #abilities {
     position: fixed;
-    bottom: 14px;
+    bottom: calc(14px + env(safe-area-inset-bottom));
     left: 50%;
     transform: translateX(-50%);
     display: flex;
@@ -230,20 +237,29 @@
   .credit { position: fixed; bottom: 8px; right: 12px; font-size: 11px; color: #4f7a4b; z-index: 9; }
 
   /* ---------- Draft / power-up picks ---------- */
-  #draftCards { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; margin-top: 26px; max-width: 660px; }
+  .draft-copy {
+    font-size: 14px;
+    color: #cdeec9;
+    margin-top: 6px;
+    letter-spacing: 1px;
+    text-shadow: 0 1px 3px #000;
+  }
+  #draftCards { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; margin-top: 22px; max-width: 720px; width: min(720px, 100%); }
   .draft-card {
-    width: 180px;
-    background: var(--panel);
-    border: 2px solid rgba(109,255,91,0.3);
-    border-radius: 16px;
+    width: 168px;
+    min-height: 188px;
+    background: rgba(5, 14, 7, 0.94);
+    border: 2px solid rgba(109,255,91,0.42);
+    border-radius: 12px;
     padding: 20px 16px;
     cursor: pointer;
     transition: transform 0.1s ease, border-color 0.1s ease, box-shadow 0.1s ease;
+    box-shadow: inset 0 0 34px rgba(109,255,91,0.04), 0 12px 34px rgba(0,0,0,0.42);
   }
   .draft-card:hover { transform: translateY(-6px); border-color: var(--inf); box-shadow: 0 12px 30px rgba(109,255,91,0.3); }
   .draft-card .pic { font-size: 44px; line-height: 1; }
   .draft-card .nm { font-weight: 900; color: var(--inf); margin: 12px 0 6px; letter-spacing: 1px; font-size: 16px; }
-  .draft-card .ds { font-size: 12px; color: #b6e6b0; line-height: 1.5; }
+  .draft-card .ds { font-size: 12.5px; color: #d6f7d0; line-height: 1.45; text-shadow: 0 1px 2px #000; }
   .draft-card .own { font-size: 10px; color: var(--warn); margin-top: 10px; letter-spacing: 1px; }
   .upgrade-panel {
     width: min(860px, 96vw);
@@ -318,7 +334,7 @@
 
   /* ---------- Touch / mobile sizing: bigger thumb targets ---------- */
   @media (pointer: coarse) {
-    #abilities { gap: 2.2vw; bottom: 14px; }
+    #abilities { gap: 2.2vw; bottom: calc(14px + env(safe-area-inset-bottom)); }
     .ability { width: min(74px, 16.5vw); height: min(74px, 16.5vw); }
     .ability .icon { font-size: min(32px, 7.4vw); }
     .ability .key { font-size: 10px; }
@@ -330,9 +346,137 @@
     .card { margin-top: 14px; padding: 14px 16px; }
     .card h2 { margin-bottom: 8px; }
     .controls { gap: 6px 14px; font-size: 13px; }
+    .mobile-controls {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+      text-align: left;
+      color: #d6f7d0;
+      font-size: 14px;
+      line-height: 1.35;
+    }
+    .mobile-controls b { color: var(--warn); }
     .btn { font-size: 19px; padding: 14px 36px; }
+    .btn:hover,
+    .draft-card:hover,
+    #rerollBtn:hover { transform: none; }
+    .draft-card:active { transform: scale(0.985); border-color: var(--warn); }
   }
   @media (max-width: 640px) {
+    #hud {
+      padding: calc(8px + env(safe-area-inset-top)) 8px 8px;
+      gap: 7px;
+      font-size: 11px;
+    }
+    .hud-box {
+      padding: 7px 8px;
+      border-radius: 8px;
+    }
+    .meter { width: 31vw; max-width: 31vw; }
+    .meter .label {
+      font-size: 9px;
+      letter-spacing: 0.5px;
+    }
+    .hud-center .big { font-size: 21px; }
+    .hud-center .sub { font-size: 9px; }
+    #toast {
+      top: calc(74px + env(safe-area-inset-top));
+      width: calc(100vw - 24px);
+      font-size: 15px;
+      line-height: 1.15;
+      letter-spacing: 1px;
+    }
+    #objective {
+      top: calc(108px + env(safe-area-inset-top));
+      min-width: calc(100vw - 24px);
+      max-width: calc(100vw - 24px);
+      font-size: 10px;
+      line-height: 1.2;
+      letter-spacing: 0.5px;
+    }
+    .overlay {
+      justify-content: flex-start;
+      padding: max(18px, env(safe-area-inset-top)) 14px max(22px, env(safe-area-inset-bottom));
+    }
+    #startScreen, #endScreen { justify-content: safe center; }
+    #draftScreen {
+      background: radial-gradient(circle at 50% 0%, rgba(23,70,25,0.68), rgba(2,5,3,0.97) 68%);
+      scroll-padding-top: 16px;
+    }
+    #draftScreen .subtitle {
+      margin-top: 2px;
+      font-size: 12px;
+      line-height: 1.25;
+      color: #ffe07a !important;
+      text-shadow: 0 2px 5px #000;
+    }
+    #draftScreen .title {
+      margin-top: 6px;
+      font-size: clamp(34px, 13vw, 48px) !important;
+      line-height: 0.98;
+      letter-spacing: 1px;
+      text-shadow: 0 0 14px rgba(109,255,91,0.52), 0 4px 0 #082508;
+    }
+    .draft-copy {
+      font-size: 13px;
+      line-height: 1.3;
+      max-width: 320px;
+    }
+    .controls { grid-template-columns: 1fr; }
+    #draftCards {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      margin-top: 16px;
+      width: min(100%, 380px);
+      max-width: 380px;
+    }
+    .draft-card {
+      width: 100%;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 54px 1fr;
+      grid-template-areas:
+        "pic name"
+        "pic desc"
+        "own own";
+      column-gap: 12px;
+      align-items: center;
+      padding: 13px 14px;
+      text-align: left;
+      border-radius: 10px;
+    }
+    .draft-card .pic {
+      grid-area: pic;
+      font-size: 38px;
+      text-align: center;
+    }
+    .draft-card .nm {
+      grid-area: name;
+      margin: 0 0 4px;
+      font-size: 15px;
+      line-height: 1.12;
+      letter-spacing: 0.5px;
+    }
+    .draft-card .ds {
+      grid-area: desc;
+      font-size: 12.5px;
+      line-height: 1.32;
+    }
+    .draft-card .own {
+      grid-area: own;
+      margin: 8px 0 0 66px;
+      font-size: 10px;
+    }
+    #rerollBtn {
+      margin-top: 14px;
+      width: min(100%, 340px);
+      min-height: 46px;
+      padding: 10px 14px;
+      font-size: 13px;
+      border-radius: 12px;
+      background: rgba(7,16,9,0.96);
+    }
     .upgrade-grid { grid-template-columns: 1fr; }
     .upgrade-row { grid-template-columns: minmax(120px, 1fr) 78px 34px; }
   }
@@ -384,6 +528,11 @@
       and sends <b style="color:var(--blood)">hunters</b> after you, the head zombie.
     </div>
     <h2 style="margin-top:18px;">Controls</h2>
+    <div class="mobile-controls">
+      <div><b>Left side</b> — move Patient Zero</div>
+      <div><b>Right side</b> — aim and auto-bite</div>
+      <div><b>Bottom buttons</b> — tap earned mutations</div>
+    </div>
     <div class="controls">
       <div><b>WASD / Arrows</b> — move</div>
       <div><b>Mouse</b> — aim your lunge</div>
@@ -415,8 +564,8 @@
 <!-- Draft screen (between levels) -->
 <div id="draftScreen" class="overlay hidden">
   <div class="subtitle" style="color:#ffcb3b; letter-spacing:3px;">LEVEL <span id="draftLvl">1</span> CLEARED</div>
-  <div class="title" style="font-size:clamp(30px,7vw,64px);">EVOLVE</div>
-  <div style="font-size:14px; color:#9adf93; margin-top:6px; letter-spacing:1px;">Choose ONE mutation or ability</div>
+  <div class="title still" style="font-size:clamp(30px,7vw,64px);">EVOLVE</div>
+  <div class="draft-copy">Choose ONE mutation or ability</div>
   <div class="upgrade-panel">
     <div class="upgrade-head"><span>Skill tree</span><b id="upgradePoints">0 POINTS</b></div>
     <div id="upgradeGrid" class="upgrade-grid"></div>
@@ -438,12 +587,14 @@
 
   function resize() {
     DPR = Math.min(window.devicePixelRatio || 1, 2);
-    W = window.innerWidth; H = window.innerHeight;
+    W = Math.round(window.visualViewport?.width || window.innerWidth);
+    H = Math.round(window.visualViewport?.height || window.innerHeight);
     canvas.width = W * DPR; canvas.height = H * DPR;
     canvas.style.width = W + "px"; canvas.style.height = H + "px";
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   }
   window.addEventListener("resize", resize);
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", resize);
   resize();
 
   // World is larger than the screen; camera follows the player.
@@ -2326,8 +2477,9 @@
 
   // ============================================================ RENDER
   function render() {
-    const sx = state.shake ? rand(-state.shake, state.shake) : 0;
-    const sy = state.shake ? rand(-state.shake, state.shake) : 0;
+    const viewShake = state.phase === "play" ? state.shake : 0;
+    const sx = viewShake ? rand(-viewShake, viewShake) : 0;
+    const sy = viewShake ? rand(-viewShake, viewShake) : 0;
     ctx.save();
     ctx.translate(-cam.x + sx, -cam.y + sy);
 
@@ -3064,6 +3216,9 @@
   function levelComplete() {
     AudioFX.levelup();
     state.statPoints = 0;
+    state.shake = 0;
+    state.flashAlpha = 0;
+    state.hitStop = 0;
     state.phase = "draft";
     el("hud").classList.add("hidden");
     el("abilities").classList.add("hidden");
