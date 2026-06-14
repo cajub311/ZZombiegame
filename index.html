@@ -2239,6 +2239,17 @@
           ctx.lineWidth = 2; ctx.strokeStyle = "rgba(255,203,59,0.35)";
           ctx.beginPath(); ctx.arc(b.cx, b.cy, b.r - 6 - k*5, 0, TAU); ctx.stroke();
         }
+        // protective SHIELD — pulses while humans are sheltered inside, so you
+        // can tell at a glance "people are protected here — break the shield"
+        if (occ) {
+          const pulse = 0.5 + 0.5 * Math.sin(b.pulse * 4);
+          ctx.save();
+          ctx.shadowColor = "#7fe8ff"; ctx.shadowBlur = 12 + pulse * 10;
+          ctx.lineWidth = 2.5;
+          ctx.strokeStyle = `rgba(127,232,255,${0.32 + 0.3 * pulse + Math.min(0.2, occ * 0.02)})`;
+          ctx.beginPath(); ctx.arc(b.cx, b.cy, b.r + 5, 0, TAU); ctx.stroke();
+          ctx.restore();
+        }
       } else {
         ctx.lineWidth = 3; ctx.strokeStyle = "rgba(255,59,78,0.4)"; ctx.setLineDash([6, 9]);
         ctx.beginPath(); ctx.arc(b.cx, b.cy, b.r, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
