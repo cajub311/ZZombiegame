@@ -416,7 +416,7 @@
 <div id="draftScreen" class="overlay hidden">
   <div class="subtitle" style="color:#ffcb3b; letter-spacing:3px;">LEVEL <span id="draftLvl">1</span> CLEARED</div>
   <div class="title" style="font-size:clamp(30px,7vw,64px);">EVOLVE</div>
-  <div style="font-size:14px; color:#9adf93; margin-top:6px; letter-spacing:1px;">Spend skill points. Boss victories also offer mutation drafts.</div>
+  <div style="font-size:14px; color:#9adf93; margin-top:6px; letter-spacing:1px;">Choose ONE mutation or ability</div>
   <div class="upgrade-panel">
     <div class="upgrade-head"><span>Skill tree</span><b id="upgradePoints">0 POINTS</b></div>
     <div id="upgradeGrid" class="upgrade-grid"></div>
@@ -864,6 +864,19 @@
       const bx = player.x + Math.cos(ang)*18, by = player.y + Math.sin(ang)*18;
       let biteHit = false;
       for (const h of humans) if (h.state === "human" && dist2(bx,by,h.x,h.y) < biteR*biteR) { startTurn(h); biteHit = true; }
+      if (!biteHit) {
+        let snap = null, sd = Infinity;
+        for (const h of humans) {
+          if (h.state !== "human") continue;
+          const d = dist2(bx, by, h.x, h.y);
+          if (d < sd && d < (biteR + 58) * (biteR + 58)) { sd = d; snap = h; }
+        }
+        if (snap) {
+          startTurn(snap);
+          addFloat(snap.x, snap.y - 18, "SNAP", "#ffcb3b", 13);
+          biteHit = true;
+        }
+      }
       for (const b of blocks) {
         if (b.breached) continue;
         // forgiving: a bite lands on the barrier if you're standing next to it
@@ -1049,12 +1062,17 @@
     for (let i = 0; i < N; i++) {
       let x, y, tries = 0;
       do {
-        const crowd = !boss && Math.random() < 0.38 ? districts[randInt(0, districts.length-1)] : null;
-        x = crowd ? clamp(crowd.x + rand(-crowd.r*0.55, crowd.r*0.55), 60, WORLD.w-60) : rand(60, WORLD.w-60);
-        y = crowd ? clamp(crowd.y + rand(-crowd.r*0.55, crowd.r*0.55), 60, WORLD.h-60) : rand(60, WORLD.h-60);
+        let starter = null;
+        if (L <= 2 && i < 12) {
+          const a = (i / 12) * TAU + rand(-0.18, 0.18);
+          starter = { x:player.x + Math.cos(a) * rand(165, 310), y:player.y + Math.sin(a) * rand(140, 285) };
+        }
+        const crowd = !starter && !boss && Math.random() < 0.38 ? districts[randInt(0, districts.length-1)] : null;
+        x = starter ? clamp(starter.x, 60, WORLD.w-60) : (crowd ? clamp(crowd.x + rand(-crowd.r*0.55, crowd.r*0.55), 60, WORLD.w-60) : rand(60, WORLD.w-60));
+        y = starter ? clamp(starter.y, 60, WORLD.h-60) : (crowd ? clamp(crowd.y + rand(-crowd.r*0.55, crowd.r*0.55), 60, WORLD.h-60) : rand(60, WORLD.h-60));
         tries++;
       }
-      while (dist2(x,y,player.x,player.y) < 320*320 && tries < 8);
+      while (L > 2 && dist2(x,y,player.x,player.y) < 320*320 && tries < 8);
       humans.push(makeHuman(x, y));
     }
     for (let i = 0; i < Math.min(14, state.mods.brood * 2 + skillValue("broodSeed") * 2); i++) {
@@ -1090,11 +1108,16 @@
   }
 
   function makeHuman(x, y) {
+    const L = state.level || 1;
     return {
       x, y, vx:0, vy:0, r: 9,
       state: "human", turn: 0, fleeT: 0,
       wanderA: rand(0, TAU), wanderT: rand(0.5, 2),
-      tint: randInt(0, 5), anim: rand(0, TAU), hideBias: Math.random(), smart: Math.random() < 0.2,
+      tint: randInt(0, 5), anim: rand(0, TAU), hideBias: Math.random(),
+      // the city wises up as you climb: more builders shore up barricades, and
+      // hardier holdouts resist turning — survivors gain ground each level
+      smart: Math.random() < Math.min(0.55, 0.18 + L * 0.035),
+      resist: Math.random() < Math.min(0.42, (L - 1) * 0.05),
     };
   }
 
@@ -1304,7 +1327,7 @@
     if (h.state !== "human") return;
     h.state = "turning";
     const fang = 1 - Math.min(0.82, state.mods.fangs * 0.22 + skillValue("fangs") * 0.08 + skillValue("muscle") * 0.025 + state.mods.acid * 0.025 + skillValue("venom") * 0.025); // Fangs speed turning
-    h.turn = rand(0.8, 1.5) * fang;
+    h.turn = rand(0.8, 1.5) * fang * (h.resist ? 1.7 : 1); // hardy holdouts cling to humanity longer
     burst(h.x, h.y, "#9dff7a");
   }
   // Assign a strain: shamblers crawl, walkers plod, runners sprint (they're the
@@ -3005,26 +3028,25 @@
   function rollDraft() {
     const wrap = el("draftCards");
     const b = el("rerollBtn");
-    if (!state.bossReward) {
-      wrap.innerHTML = `<div style="color:#b6e6b0;font-size:12px;letter-spacing:1px;margin-top:4px;">Spend your point to enter the next district. Mutations return after boss fights.</div>`;
-      b.style.display = "none";
-      updateUpgradeUI();
-      return;
-    }
+    // Pure card draft every level: pick ONE of four random mutations/abilities.
+    // (The old point-buy skill grid is retired — it could deadlock and let you
+    // instantly max a node.)
+    const panel = document.querySelector("#draftScreen .upgrade-panel");
+    if (panel) panel.style.display = "none";
     b.style.display = "";
     let avail = POWERUPS.filter(p => p.repeat || !isOwned(p));
     if (state.bossRewardType === "hard") avail = avail.filter(p => RARE_POWERUPS.has(p.id) || ABILITY_OF[p.id] != null);
     const pool = avail.slice(), picks = [];
-    // Guarantee a skill unlock appears each draft until all four are earned,
+    // Guarantee a locked ability appears each draft until all four are earned,
     // so abilities are dependable progression rather than pure RNG.
     const lockedAbilities = avail.filter(p => ABILITY_OF[p.id] != null && !isOwned(p));
     if (lockedAbilities.length) {
       const g = lockedAbilities[randInt(0, lockedAbilities.length-1)];
       picks.push(g); pool.splice(pool.indexOf(g), 1);
     }
-    const count = state.bossRewardType === "hard" ? 4 : 3;
+    const count = 4; // always four cards to choose from
     while (picks.length < count && pool.length) picks.push(pool.splice(randInt(0, pool.length-1), 1)[0]);
-    wrap.innerHTML = `<div style="flex-basis:100%;color:#ffcb3b;font-size:12px;letter-spacing:1px;margin-top:-8px;">Boss reward: spend 1 skill point and choose 1 mutation.</div>`;
+    wrap.innerHTML = "";
     picks.forEach(pu => {
       const owned = stackCount(pu);
       const d = document.createElement("div");
@@ -3038,11 +3060,10 @@
     });
     b.textContent = `↻ Reroll (${REROLL_COST} biomass) · have ${state.dna}`;
     b.style.opacity = state.dna >= REROLL_COST ? "1" : "0.45";
-    updateUpgradeUI();
   }
   function levelComplete() {
     AudioFX.levelup();
-    state.statPoints = 1;
+    state.statPoints = 0;
     state.phase = "draft";
     el("hud").classList.add("hidden");
     el("abilities").classList.add("hidden");
@@ -3069,13 +3090,8 @@
     applyPower(pu.id);
     state.bossReward = false;
     state.bossRewardType = null;
-    if (state.statPoints > 0) {
-      AudioFX.pickup();
-      rollDraft();
-      toast(`${pu.name} mutated — spend your skill point`);
-    } else {
-      advanceFromDraft(pu.name);
-    }
+    AudioFX.pickup();
+    advanceFromDraft(pu.name); // one pick per level, then straight into the next district
   }
 
   function loadBest() { try { return JSON.parse(localStorage.getItem("pz_best") || "{}"); } catch (e) { return {}; } }
