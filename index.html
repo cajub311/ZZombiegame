@@ -1052,6 +1052,8 @@
   let spits = [];    // player's toxic projectiles {x,y,vx,vy,r,life}
   let pickups = [];  // DNA orbs {x,y,r,bob}
   let particles = []; // {x,y,vx,vy,life,max,r,color}
+  // horde-size milestones (hoisted to module scope so it isn't reallocated every frame)
+  const HORDE_MS = [[25,"A MOB"],[50,"A HORDE"],[100,"A PLAGUE"],[200,"UNSTOPPABLE"],[350,"APOCALYPSE"]];
   let clouds = [];    // bloater infection clouds {x,y,r,life,max}
   let strikes = [];   // martial-law airstrikes {x,y,t,r,done}
   let rivals = [];    // Night Stalkers — a rival strain {x,y,r,hp,anim}
@@ -1333,6 +1335,7 @@
         state.hitStop = Math.max(state.hitStop || 0, directBites > 1 ? 0.05 : 0.03);
         // gore pools where you feed — a lasting blood splat per body bitten
         for (let k = 0; k < directBites; k++) decal(bx + rand(-12,12), by + rand(-12,12), rand(7,13), "#3a0a12");
+        bloodSpray(bx, by, player.lungeA || 0);  // directional spray cone + gibs
         if (directBites >= 3) { addFloat(bx, by - 30, `CHOMP x${directBites}`, "#ffcb3b", 17); ring(bx, by, 60, "#9dff7a"); }
         rewardDirectBite(directBites, bx, by);
         dropBloodScent(scentTarget || { x:bx, y:by });
@@ -1516,6 +1519,15 @@
       const h = humans[randInt(0, humans.length - 1)];
       if (h && h.state === "human" && dist2(h.x,h.y,player.x,player.y) > 180*180) startTurn(h);
     }
+    // migrated swarm — a fraction of last city's horde follows you into the next
+    // one, so the power fantasy COMPOUNDS across cities instead of resetting to a
+    // lone zombie. Turns the nearest civilians so you arrive with a posse.
+    if (L > 1 && !boss) {
+      const carry = clamp(Math.round((state.peakHorde || 1) * 0.25), 6, 40);
+      const pool = humans.filter(h => h.state === "human")
+                         .sort((a,b) => dist2(a.x,a.y,player.x,player.y) - dist2(b.x,b.y,player.x,player.y));
+      for (let i = 0; i < Math.min(carry, pool.length); i++) startTurn(pool[i], true);
+    }
     for (let i = 0; i < 6; i++) spawnPickup();
 
     state.time = 0;
@@ -1523,6 +1535,7 @@
     state.soldierTimer = Math.max(1.8, 7 - Math.sqrt(L) * 0.9);
     state.shake = 0; state.flashAlpha = 0;
     state.startCount = 1; frenzyT = 0;
+    state.hordeMs = 0;  // re-arm horde milestones so every city earns its fanfare
     state.lastLvl = null; state.hunterAnnounced = false; state.panicked = false;
     state.strikeTimer = 0; state.strikeWarned = false;
     state.districtCaptures = 0; state.escaped = 0; state.objectiveStep = 0; state.objectiveText = "";
@@ -2270,6 +2283,9 @@
 
   // ============================================================ PARTICLES / FX
   function burst(x, y, color) {
+    // hard cap so sustained action (big hordes, boss deaths) can't balloon the
+    // particle array and tank the frame rate.
+    if (particles.length > 460) particles.splice(0, 16);
     for (let i = 0; i < 8; i++) {
       const a = rand(0, TAU), s = rand(40, 160);
       particles.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life: rand(0.3,0.7), max: 0.7, r: rand(2,4), color });
@@ -2284,6 +2300,20 @@
       particles.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life: rand(0.3,0.6), max: 0.6, r: rand(2,3), color: "#ff3b4e" });
     }
     if (Math.random() < 0.5) decal(x + rand(-4,4), y + rand(-4,4), rand(3,6), "#5e0f17");
+  }
+  // Directional gore for a connecting bite: a cone of spray flung away from the
+  // chomp plus a couple of heavier gibs that tumble and leave a stain — so a bite
+  // reads as tearing flesh, not a tidy puff.
+  function bloodSpray(x, y, ang) {
+    if (particles.length > 460) particles.splice(0, 16);
+    for (let i = 0; i < 12; i++) {
+      const a = ang + rand(-0.55, 0.55), s = rand(120, 340);
+      particles.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life: rand(0.25,0.55), max: 0.55, r: rand(1.5,4), color: i % 2 ? "#ff3b4e" : "#8e1018" });
+    }
+    for (let i = 0; i < 2; i++) {
+      const a = ang + rand(-0.4, 0.4), s = rand(70, 150);
+      particles.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life: rand(0.5,0.8), max: 0.8, r: rand(3,5), color: "#6e0c14", gib: true });
+    }
   }
   // Persistent gore/ichor stain on the ground (capped so it never piles up).
   function decal(x, y, r, c) {
@@ -2352,9 +2382,8 @@
     if (zombieCount > state.peakHorde) state.peakHorde = zombieCount;
     updateDirector(dt, zombieCount, remainingHumans());
     // horde-size milestones (Katamari-style scale validation, once per run)
-    const MS = [[25,"A MOB"],[50,"A HORDE"],[100,"A PLAGUE"],[200,"UNSTOPPABLE"],[350,"APOCALYPSE"]];
-    while (state.hordeMs < MS.length && zombieCount >= MS[state.hordeMs][0]) {
-      const [num,label] = MS[state.hordeMs];
+    while (state.hordeMs < HORDE_MS.length && zombieCount >= HORDE_MS[state.hordeMs][0]) {
+      const [num,label] = HORDE_MS[state.hordeMs];
       toast(`🧟 HORDE ${num} — ${label}`);
       // Make crossing a horde tier FEEL like a milestone, not a footnote:
       // screen kick, brief hit-stop, green flash, banner, ring, and a horn.
@@ -2431,6 +2460,14 @@
     updateDistricts(dt);
     updateSideQuest(dt);
     updateObjectives(zombieCount, remainingHumans());
+
+    // The "command" prey a smart horde converges on depends only on the player,
+    // not the individual zombie — compute it ONCE per frame instead of calling
+    // nearestPrey() (a full humans+blocks+soldiers scan) for every zombie, which
+    // turned the horde loop into an O(n^2) hotspot once a command upgrade is owned.
+    const packMindLvl = skillValue("packMind");
+    const wantsCommand = state.mods.smart || packMindLvl || state.mods.scream || skillValue("greenTide");
+    const frameCommandPrey = wantsCommand ? nearestPrey() : null;
 
     // ---- humans behaviour
     for (const h of humans) {
@@ -2516,10 +2553,10 @@
           const d = dist2(h.x,h.y,t.x,t.y);
           if (d < bd) { bd = d; best = t; }
         }
-        const packMind = skillValue("packMind");
+        const packMind = packMindLvl;
         const marked = state.markedTarget && state.markedTarget.target ? state.markedTarget.target : null;
         const scent = state.bloodScent && state.bloodScent.t > 0 ? state.bloodScent : null;
-        const command = marked || scent || ((state.mods.smart || packMind || state.mods.scream || skillValue("greenTide")) ? nearestPrey() : null);
+        const command = marked || scent || frameCommandPrey;
         const shelterTarget = nearestOccupiedShelter(h.x, h.y, best ? 420 + state.mods.smart*90 + packMind*45 + state.mods.scream*35 : 900 + state.mods.smart*120 + packMind*60 + state.mods.scream*60);
         // Chase a nearby victim; otherwise surge toward Patient Zero so the
         // horde reads as one growing swarm around you instead of scattering.
@@ -2932,7 +2969,7 @@
     for (const h of humans) if (h.state === "human" || h.state === "turning" || h.state === "hidden") remaining++;
     if (state.isBoss) {
       // boss levels end only when the Behemoth is down
-      if (state.bossSpawned && !state.boss) return levelComplete("BOSS DEVURED");
+      if (state.bossSpawned && !state.boss) return levelComplete("BOSS DEVOURED");
     } else {
       const stragglerLimit = state.level <= 4 ? Math.max(12, Math.floor(state.population * 0.18)) : Math.max(6, Math.floor(state.population * 0.045));
       const nearTarget = takeoverFraction(remaining) >= clearFractionForLevel() - 0.06;
@@ -2986,6 +3023,22 @@
     ctx.strokeStyle = "rgba(109,255,91,0.18)";
     ctx.lineWidth = 4;
     ctx.strokeRect(2, 2, WORLD.w-4, WORLD.h-4);
+
+    // Patient Zero's light pool — a sickly radial glow that travels with you and
+    // flickers like a failing streetlight, so the world feels lit BY you while
+    // darkness presses in everywhere else. Tints redder as the city falls.
+    {
+      const lr = 430 + Math.sin(state.time*7)*8 + Math.sin(state.time*23)*4;
+      const lg = ctx.createRadialGradient(player.x, player.y, 30, player.x, player.y, lr);
+      lg.addColorStop(0, `rgba(${110+inf*120},255,${140-inf*60},0.10)`);
+      lg.addColorStop(0.5, "rgba(60,160,80,0.04)");
+      lg.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = lg;
+      ctx.fillRect(cam.x - sx, cam.y - sy, W, H);
+      ctx.restore();
+    }
 
     // named districts: light objectives that make the city feel systemic
     for (const d of districts) {
@@ -3240,6 +3293,27 @@
       ctx.stroke();
     }
 
+    // horde glow field — one cheap additive disc per on-screen zombie. Where the
+    // swarm packs together the discs sum into a single bright, pulsing mass, so a
+    // crowd reads as ONE glowing organism. This replaces the per-zombie shadowBlur
+    // (much cheaper) while looking better as the horde grows.
+    {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const pulse = 0.05 + 0.012 * Math.sin(state.time * 4);
+      for (const h of humans) {
+        if (h.state !== "zombie") continue;
+        if (h.x < cam.x-60 || h.x > cam.x+W+60 || h.y < cam.y-60 || h.y > cam.y+H+60) continue;
+        const gr = h.r * 3;
+        const g = ctx.createRadialGradient(h.x, h.y, 0, h.x, h.y, gr);
+        g.addColorStop(0, `rgba(80,255,110,${pulse})`);
+        g.addColorStop(1, "rgba(80,255,110,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(h.x, h.y, gr, 0, TAU); ctx.fill();
+      }
+      ctx.restore();
+    }
+
     // humans / zombies
     for (const h of humans) {
       if (h.state === "hidden") continue;
@@ -3471,14 +3545,14 @@
         bloater:  { b:"#6e7a2a", h:"#c2d24a" },
       }[h.ztype || "walker"];
       const wob = Math.sin(h.anim) * (h.ztype === "runner" || h.ztype === "leaper" ? 3 : 2);
-      ctx.shadowColor = "rgba(109,255,91,0.5)"; ctx.shadowBlur = 8;
+      // (per-zombie shadowBlur removed — the additive horde glow field in render()
+      // gives a richer, cheaper collective glow that scales with the swarm.)
       if (h.ztype === "brute") { ctx.strokeStyle = "#162e0f"; ctx.lineWidth = 3; }
       ctx.fillStyle = C.b;
       ctx.beginPath(); ctx.ellipse(wob*0.2, 2, h.r*0.9, h.r*1.05, 0, 0, TAU); ctx.fill();
       if (h.ztype === "brute") ctx.stroke();
       ctx.fillStyle = C.h;
       ctx.beginPath(); ctx.arc(wob*0.4, -h.r*0.6, h.r*0.55, 0, TAU); ctx.fill();
-      ctx.shadowBlur = 0;
       // red eyes
       ctx.fillStyle = "#ff3b4e";
       const es = h.ztype === "brute" ? 3 : 2;
@@ -3604,6 +3678,15 @@
     ctx.fillStyle = "#ffcb3b";
     ctx.fillRect(wob*0.4 - 4, -player.r*0.7, 3, 3);
     ctx.fillRect(wob*0.4 + 2, -player.r*0.7, 3, 3);
+    // white jaw flash at the lunge tip — a hot bite-impact pop on the chomp
+    if (player.lungeT > 0) {
+      const lp2 = Math.min(1, player.lungeT / 0.16), la2 = player.lungeA || 0;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = `rgba(255,255,255,${0.55*lp2})`;
+      ctx.beginPath(); ctx.arc(Math.cos(la2)*player.r*1.05, Math.sin(la2)*player.r*1.05, 7*lp2, 0, TAU); ctx.fill();
+      ctx.restore();
+    }
     // crown marker so player is always findable
     ctx.fillStyle = "#fff";
     ctx.font = "bold 13px sans-serif"; ctx.textAlign = "center";
