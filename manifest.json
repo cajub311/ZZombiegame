@@ -1,7 +1,7 @@
 {
-  "name": "Patient Zero — Infect the City",
-  "short_name": "Patient Zero",
-  "description": "You are the outbreak. Bite, build a horde, clear levels, beat the bosses.",
+  "name": "Faction Wars — Conquer the Map",
+  "short_name": "Faction Wars",
+  "description": "Pick a faction — Zombies, Werewolves, Humans or Vampires — and out-conquer your rivals in a real-time territory war.",
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",
